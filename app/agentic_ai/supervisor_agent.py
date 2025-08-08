@@ -19,6 +19,18 @@ from plotly.subplots import make_subplots
 import json
 from datetime import datetime, timedelta
 
+# Utility function for JSON serialization
+def convert_numpy_to_list(obj):
+    """Convert numpy arrays to lists for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: convert_numpy_to_list(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_to_list(item) for item in obj]
+    elif hasattr(obj, 'tolist'):  # numpy array
+        return obj.tolist()
+    else:
+        return obj
+
 def get_secret_from_keyvault(secret_name, vault_url):
     """
     Reads a secret from Azure Key Vault using DefaultAzureCredential.
@@ -340,11 +352,11 @@ def create_timeseries_line_chart(
         df = pd.DataFrame(data_list)
         
         if df.empty:
-            return {"error": "No data provided"}
+            return json.dumps({"error": "No data provided"})
         
         # Ensure we have the required columns
         if x_column not in df.columns or y_column not in df.columns:
-            return {"error": f"Required columns {x_column} and {y_column} not found in data"}
+            return json.dumps({"error": f"Required columns {x_column} and {y_column} not found in data"})
         
         # Convert timestamp column to datetime if it's not already
         if df[x_column].dtype == 'object':
@@ -373,10 +385,18 @@ def create_timeseries_line_chart(
             template='plotly_white'
         )
         
-        return {"type": "plotly_figure", "figure_data": fig.to_dict(), "description": f"Created time series chart: {title}"}
+        # Return the chart data as JSON string that can be parsed by Streamlit
+        chart_response = {
+            "type": "plotly_figure", 
+            "figure_data": fig.to_dict(), 
+            "description": f"Created time series chart: {title}"
+        }
+        
+        chart_response = convert_numpy_to_list(chart_response)
+        return json.dumps(chart_response)
         
     except Exception as e:
-        return {"error": f"Error creating chart: {str(e)}"}
+        return json.dumps({"error": f"Error creating chart: {str(e)}"})
 
 @tool
 def create_multi_metric_timeseries(
@@ -410,7 +430,7 @@ def create_multi_metric_timeseries(
         df = pd.DataFrame(data_list)
         
         if df.empty:
-            return {"error": "No data provided"}
+            return json.dumps({"error": "No data provided"})
         
         # Parse metric columns
         metrics = [col.strip() for col in metric_columns.split(',')]
@@ -418,7 +438,7 @@ def create_multi_metric_timeseries(
         # Ensure we have the required columns
         missing_cols = [col for col in [x_column] + metrics if col not in df.columns]
         if missing_cols:
-            return {"error": f"Missing columns: {missing_cols}"}
+            return json.dumps({"error": f"Missing columns: {missing_cols}"})
         
         # Convert timestamp column to datetime if it's not already
         if df[x_column].dtype == 'object':
@@ -457,10 +477,17 @@ def create_multi_metric_timeseries(
             )
         )
         
-        return {"type": "plotly_figure", "figure_data": fig.to_dict(), "description": f"Created multi-metric chart: {title}"}
+        # Return the chart data as JSON string that can be parsed by Streamlit
+        chart_response = {
+            "type": "plotly_figure", 
+            "figure_data": fig.to_dict(), 
+            "description": f"Created multi-metric chart: {title} with metrics: {', '.join(metrics)}"
+        }
+        chart_response = convert_numpy_to_list(chart_response)
+        return json.dumps(chart_response)
         
     except Exception as e:
-        return {"error": f"Error creating multi-metric chart: {str(e)}"}
+        return json.dumps({"error": f"Error creating multi-metric chart: {str(e)}"})
 
 @tool
 def create_incident_timeline(
@@ -580,10 +607,19 @@ def create_incident_timeline(
         fig.update_yaxes(title_text="Metric Value", row=1, col=1)
         fig.update_yaxes(title_text="Incidents", row=2, col=1, showticklabels=False)
         
-        return {"type": "plotly_figure", "figure_data": fig.to_dict(), "description": f"Created incident timeline: {title}"}
+        # Return the chart data as JSON string that can be parsed by Streamlit
+        chart_response = {
+            "type": "plotly_figure", 
+            "figure_data": fig.to_dict(), 
+            "description": f"Created incident timeline: {title} with {len(incidents) if incidents else 0} incidents"
+        }
+        chart_response = convert_numpy_to_list(chart_response)
+        return json.dumps(chart_response)
         
     except Exception as e:
-        return {"error": f"Error creating incident timeline: {str(e)}"}@tool  
+        return json.dumps({"error": f"Error creating incident timeline: {str(e)}"})
+
+@tool  
 def create_deployment_impact_chart(
     deployment_data: str,
     metrics_data: str,
@@ -621,7 +657,7 @@ def create_deployment_impact_chart(
             metrics = metrics_data
         
         if not deployments or not metrics:
-            return {"error": "Both deployment and metrics data are required"}
+            return json.dumps({"error": "Both deployment and metrics data are required"})
         
         # Convert to DataFrames
         df_deployments = pd.DataFrame(deployments)
@@ -687,10 +723,17 @@ def create_deployment_impact_chart(
             hovermode='x unified'
         )
         
-        return {"type": "plotly_figure", "figure_data": fig.to_dict(), "description": f"Created deployment impact chart: {title}"}
+        # Return the chart data as JSON string that can be parsed by Streamlit
+        chart_response = {
+            "type": "plotly_figure", 
+            "figure_data": fig.to_dict(), 
+            "description": f"Created deployment impact chart: {title} with {len(deployments)} deployments"
+        }
+        chart_response = convert_numpy_to_list(chart_response)
+        return json.dumps(chart_response)
         
     except Exception as e:
-        return {"error": f"Error creating deployment impact chart: {str(e)}"}
+        return json.dumps({"error": f"Error creating deployment impact chart: {str(e)}"})
 
 # Define the Kusto agent
 kusto_agent = create_react_agent(
@@ -778,10 +821,12 @@ line_graph_agent = create_react_agent(
         "- Use create_incident_timeline() to create timeline charts showing incidents overlaid with system metrics\n"
         "- Use create_deployment_impact_chart() to visualize how deployments impact system metrics\n"
         "- Always ensure data is properly formatted as JSON strings before passing to tools\n"
+        "- When a chart tool returns JSON data, INCLUDE THE ENTIRE JSON RESPONSE in your final answer\n"
         "- Focus on creating clear, interactive visualizations that help users understand their data\n"
         "- When receiving data from other agents, transform it appropriately for visualization\n"
-        "- Provide helpful context about what the charts show and any patterns or anomalies visible\n"
-        "- Return the chart JSON and a brief description of what the visualization shows"
+        "- Your response should include both the chart JSON and a brief description\n"
+        "- IMPORTANT: Always include the complete JSON response from the chart tools in your answer so Streamlit can render the charts\n"
+        "- Provide helpful context about what the charts show and any patterns or anomalies visible"
     ),
     name="line_graph_agent",
 )
@@ -939,10 +984,12 @@ def create_dynamic_supervisor(temperature=0.1, session_context=None, custom_prom
             "- Use create_incident_timeline() to create timeline charts showing incidents overlaid with system metrics\n"
             "- Use create_deployment_impact_chart() to visualize how deployments impact system metrics\n"
             "- Always ensure data is properly formatted as JSON strings before passing to tools\n"
+            "- When a chart tool returns JSON data, INCLUDE THE ENTIRE JSON RESPONSE in your final answer\n"
             "- Focus on creating clear, interactive visualizations that help users understand their data\n"
             "- When receiving data from other agents, transform it appropriately for visualization\n"
-            "- Provide helpful context about what the charts show and any patterns or anomalies visible\n"
-            "- Return the chart JSON and a brief description of what the visualization shows"
+            "- Your response should include both the chart JSON and a brief description\n"
+            "- IMPORTANT: Always include the complete JSON response from the chart tools in your answer so Streamlit can render the charts\n"
+            "- Provide helpful context about what the charts show and any patterns or anomalies visible"
         ),
         name="line_graph_agent",
     )

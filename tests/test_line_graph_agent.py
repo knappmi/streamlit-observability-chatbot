@@ -12,7 +12,9 @@ import numpy as np
 
 # Add current directory to path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
+parent_dir = os.path.dirname(current_dir)
+agentic_ai_dir = os.path.join(parent_dir, 'app', 'agentic_ai')
+sys.path.append(agentic_ai_dir)
 
 def test_line_graph_tools():
     """Test the line graph visualization tools."""
