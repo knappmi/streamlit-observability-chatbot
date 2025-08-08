@@ -13,6 +13,7 @@ langchain-community
 azure-identity
 azure-kusto-data
 azure-monitor-query
+azure-keyvault-secrets
 
 # openai  # Uncomment only if explicitly needed (version managed by langchain-openai)
 # openai==0.27.8

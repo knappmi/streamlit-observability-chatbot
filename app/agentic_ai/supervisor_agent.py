@@ -2,7 +2,8 @@ from langgraph_supervisor import create_supervisor
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import AzureChatOpenAI
 from langchain_core.tools import tool
-from azure.identity import ManagedIdentityCredential
+from azure.identity import ManagedIdentityCredential,DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 from azure.kusto.data import KustoConnectionStringBuilder, KustoClient
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -18,21 +19,38 @@ from plotly.subplots import make_subplots
 import json
 from datetime import datetime, timedelta
 
+def get_secret_from_keyvault(secret_name, vault_url):
+    """
+    Reads a secret from Azure Key Vault using DefaultAzureCredential.
+    """
+    try:
+        credential = DefaultAzureCredential()
+        client = SecretClient(vault_url=vault_url, credential=credential)
+        secret = client.get_secret(secret_name)
+        if not secret.value:
+            raise ValueError(f"Secret '{secret_name}' is empty in Key Vault '{vault_url}'")
+        return secret.value
+    except Exception as e:
+        raise RuntimeError(f"Failed to retrieve secret '{secret_name}' from Key Vault: {e}")
+
 # Import configuration
 try:
     from config import *
 except ImportError:
     # Fallback values if config.py is not found
+    VAULT_URL = "https://argusaskagenthackathonkv.vault.azure.net/"
     KUSTO_CLUSTER_URI = "https://argushackathoncluster.westus.kusto.windows.net"
     KUSTO_DATABASE = "ArgusAskJarvisDB"
     KUSTO_INCIDENT_TABLE = "IcMDataWarehouse"
     KUSTO_DEPLOYMENT_TABLE = "DeploymentEvents"
-    KUSTO_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
-    KUSTO_TENANT_ID = "72f988bf-86f1-41af-91ab-2d7cd011db47"
+    KUSTO_CLIENT_ID = get_secret_from_keyvault("KUSTOCLIENTID", VAULT_URL)
+    KUSTO_TENANT_ID = get_secret_from_keyvault("TENANTID", VAULT_URL)
     PROMETHEUS_QUERY_ENDPOINT = "https://amw-argus-hack25-gqczh3d4b2d8d3en.westus.prometheus.monitor.azure.com"
-    PROMETHEUS_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
+    PROMETHEUS_CLIENT_ID = get_secret_from_keyvault("PROMETHEUSCLIENTID", VAULT_URL)
     LOG_ANALYTICS_WORKSPACE_ID = "f4576696-34ed-4caf-acd6-695a69f857d0"
-    LOG_ANALYTICS_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
+    LOG_ANALYTICS_CLIENT_ID = get_secret_from_keyvault("LOGANALYTICSCLIENTID", VAULT_URL)
+    OPEN_AI_API_KEY = get_secret_from_keyvault("AZUREOPENAIKEY", VAULT_URL)
+
 
 # Initialize the model (default temperature)
 model_to_use = AzureChatOpenAI(
