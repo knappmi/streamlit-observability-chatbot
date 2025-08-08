@@ -55,29 +55,35 @@ def format_prometheus_range_data_for_charts(prometheus_response):
             label_parts = []
             for key, value in labels.items():
                 if key not in ['__name__']:  # Skip __name__ as we already used it
-                    label_parts.append(f"{key}_{value}")
+                    # Clean label values - remove special characters that might cause issues
+                    clean_value = str(value).replace('-', '_').replace('.', '_').replace('/', '_')
+                    label_parts.append(f"{key}_{clean_value}")
             
             if label_parts:
                 metric_name = f"{metric_name}_{'_'.join(label_parts)}"
             
             # Process each timestamp/value pair
             for timestamp, value in result.get('values', []):
-                # Convert Unix timestamp to ISO format
-                dt = datetime.fromtimestamp(float(timestamp))
-                iso_timestamp = dt.isoformat() + 'Z'
-                
-                # Find or create row for this timestamp
-                existing_row = None
-                for row in formatted_data:
-                    if row['timestamp'] == iso_timestamp:
-                        existing_row = row
-                        break
-                
-                if existing_row:
-                    existing_row[metric_name] = float(value)
-                else:
-                    new_row = {'timestamp': iso_timestamp, metric_name: float(value)}
-                    formatted_data.append(new_row)
+                try:
+                    # Convert Unix timestamp to ISO format
+                    dt = datetime.fromtimestamp(float(timestamp))
+                    iso_timestamp = dt.isoformat() + 'Z'
+                    
+                    # Find or create row for this timestamp
+                    existing_row = None
+                    for row in formatted_data:
+                        if row['timestamp'] == iso_timestamp:
+                            existing_row = row
+                            break
+                    
+                    if existing_row:
+                        existing_row[metric_name] = float(value)
+                    else:
+                        new_row = {'timestamp': iso_timestamp, metric_name: float(value)}
+                        formatted_data.append(new_row)
+                except (ValueError, TypeError) as e:
+                    print(f"Error processing timestamp/value pair: {timestamp}, {value} - {e}")
+                    continue
         
         # Sort by timestamp
         formatted_data.sort(key=lambda x: x['timestamp'])
@@ -85,6 +91,7 @@ def format_prometheus_range_data_for_charts(prometheus_response):
         
     except Exception as e:
         print(f"Error formatting Prometheus data: {e}")
+        # Return empty list instead of None to avoid downstream issues
         return []
 
 def get_secret_from_keyvault(secret_name, vault_url):
@@ -417,11 +424,64 @@ def format_prometheus_data_for_charts(prometheus_response: str) -> str:
         else:
             response_data = prometheus_response
         
+        # Add debugging info
+        print(f"Processing Prometheus response with {len(response_data.get('data', {}).get('result', []))} result sets")
+        
         formatted_data = format_prometheus_range_data_for_charts(response_data)
+        
+        if not formatted_data:
+            return json.dumps({"error": "No data could be formatted from Prometheus response", "debug_info": {
+                "result_count": len(response_data.get('data', {}).get('result', [])),
+                "response_status": response_data.get('status', 'unknown')
+            }})
+        
+        print(f"Successfully formatted {len(formatted_data)} data points")
         return json.dumps(formatted_data)
         
+    except json.JSONDecodeError as e:
+        return json.dumps({"error": f"Invalid JSON in Prometheus response: {str(e)}"})
     except Exception as e:
-        return json.dumps({"error": f"Error formatting Prometheus data: {str(e)}"})
+        return json.dumps({"error": f"Error formatting Prometheus data: {str(e)}", "response_sample": str(prometheus_response)[:200] if isinstance(prometheus_response, str) else "non-string response"})
+
+@tool
+def debug_prometheus_response(prometheus_response: str) -> str:
+    """
+    Debug tool to analyze Prometheus response structure and identify issues.
+    
+    Args:
+        prometheus_response: JSON string of Prometheus response
+        
+    Returns:
+        JSON string with debug information about the response
+    """
+    try:
+        if isinstance(prometheus_response, str):
+            response_data = json.loads(prometheus_response)
+        else:
+            response_data = prometheus_response
+        
+        debug_info = {
+            "status": response_data.get('status', 'unknown'),
+            "data_type": response_data.get('data', {}).get('resultType', 'unknown'),
+            "result_count": len(response_data.get('data', {}).get('result', [])),
+            "results": []
+        }
+        
+        # Analyze each result
+        for i, result in enumerate(response_data.get('data', {}).get('result', [])):
+            result_info = {
+                "index": i,
+                "metric_name": result.get('metric', {}).get('__name__', 'unknown'),
+                "labels": list(result.get('metric', {}).keys()),
+                "values_count": len(result.get('values', [])),
+                "sample_labels": dict(list(result.get('metric', {}).items())[:3])  # First 3 labels
+            }
+            debug_info["results"].append(result_info)
+        
+        return json.dumps(debug_info, indent=2)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Error debugging Prometheus response: {str(e)}"})
 
 # === Log Analytics Tools ===
 @tool
@@ -910,7 +970,7 @@ kusto_agent = create_react_agent(
 # Define the Prometheus agent
 prometheus_agent = create_react_agent(
     model=model_to_use,
-    tools=[prometheus_metrics_fetch_tool, promql_query_tool, promql_range_query_tool, format_prometheus_data_for_charts],
+    tools=[prometheus_metrics_fetch_tool, promql_query_tool, promql_range_query_tool, format_prometheus_data_for_charts, debug_prometheus_response],
     prompt=(
         "You are a Prometheus agent who can read Azure Monitor workspace (Prometheus environment). "
         "You have default configuration values pre-configured, so you can work immediately without asking for connection details.\n\n"
