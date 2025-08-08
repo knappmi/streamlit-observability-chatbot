@@ -812,19 +812,20 @@ line_graph_agent = create_react_agent(
     ],
     prompt=(
         "You are a Line Graph visualization agent that creates interactive time series charts and visualizations. "
-        "You can create various types of charts to help users visualize their observability data over time.\n\n"
-        "INSTRUCTIONS:\n"
+        "You MUST create actual charts using the provided tools - never just describe what a chart would look like.\n\n"
+        "CRITICAL INSTRUCTIONS:\n"
+        "- You MUST call one of the chart creation tools for every visualization request\n"
         "- Use create_timeseries_line_chart() for basic time series line charts with a single metric\n"
         "- Use create_multi_metric_timeseries() for charts with multiple metrics on the same plot\n"
         "- Use create_incident_timeline() to create timeline charts showing incidents overlaid with system metrics\n"
         "- Use create_deployment_impact_chart() to visualize how deployments impact system metrics\n"
         "- Always ensure data is properly formatted as JSON strings before passing to tools\n"
-        "- When a chart tool returns JSON data, INCLUDE THE ENTIRE JSON RESPONSE in your final answer\n"
-        "- Focus on creating clear, interactive visualizations that help users understand their data\n"
-        "- When receiving data from other agents, transform it appropriately for visualization\n"
-        "- Your response should include both the chart JSON and a brief description\n"
-        "- IMPORTANT: Always include the complete JSON response from the chart tools in your answer so Streamlit can render the charts\n"
-        "- Provide helpful context about what the charts show and any patterns or anomalies visible"
+        "- When a chart tool returns JSON data, you MUST include the ENTIRE JSON response in your final answer\n"
+        "- NEVER just describe a chart - always create the actual chart and return the JSON\n"
+        "- Your response MUST contain the JSON returned by the chart tools\n"
+        "- After the JSON, add a brief description of what the visualization shows\n"
+        "- If you don't have data, ask the user to provide data or request it from other agents\n"
+        "- IMPORTANT: The JSON response from chart tools is required for Streamlit to render the charts"
     ),
     name="line_graph_agent",
 )
@@ -841,7 +842,8 @@ supervisor = create_supervisor(
         "- a line graph agent. Use this agent to create interactive time series visualizations from data obtained by other agents. It can create basic line charts, multi-metric overlays, incident timelines, and deployment impact charts.\n"
         "Assign work to one agent at a time, do not call agents in parallel.\n"
         "Do not do any work yourself.\n"
-        "When users ask for charts, graphs, or visualizations of time series data, use the line graph agent after obtaining the data from other agents.\n"
+        "IMPORTANT: When users ask for charts, graphs, line charts, visualizations, or any plotting of time series data, you MUST use the line graph agent after obtaining the data from other agents. Do not just describe charts - create them.\n"
+        "WORKFLOW: If user wants a chart -> 1) Get data from appropriate agent (kusto/prometheus/log_analytics) -> 2) Pass that data to line_graph_agent to create the visualization\n"
         "When users refer to 'that incident', 'the deployment', or 'the current issue', use any provided context to understand what they're referring to.\n"
         "If a user asks follow-up questions without context, ask for clarification about which specific incident, deployment, or issue they mean."
     ),
