@@ -1,176 +1,87 @@
 #!/usr/bin/env python3
 """
-Test script for Line Graph Agent implementation
+Test script to verify the line graph agent calls tools instead of just describing charts.
 """
 
 import sys
 import os
 import json
-from datetime import datetime, timedelta
-import pandas as pd
-import numpy as np
 
-# Add current directory to path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-agentic_ai_dir = os.path.join(parent_dir, 'app', 'agentic_ai')
-sys.path.append(agentic_ai_dir)
+# Add the app directory to the path
+sys.path.append(os.path.join(os.path.dirname(__file__), 'app'))
 
-def test_line_graph_tools():
-    """Test the line graph visualization tools."""
+from agentic_ai.supervisor_agent import line_graph_agent
+
+def test_line_graph_agent():
+    """Test that the line graph agent actually calls chart creation tools."""
     
-    # Import the supervisor agent module
-    try:
-        from supervisor_agent import (
-            create_timeseries_line_chart, 
-            create_multi_metric_timeseries,
-            create_incident_timeline,
-            create_deployment_impact_chart
-        )
-        print("✅ Successfully imported line graph tools")
-    except ImportError as e:
-        print(f"❌ Failed to import line graph tools: {e}")
-        return False
+    print("🧪 Testing line graph agent behavior...")
     
-    # Test 1: Basic time series chart
-    print("\n🧪 Testing basic time series chart...")
-    
-    # Generate sample time series data
-    timestamps = []
-    values = []
-    base_time = datetime.now() - timedelta(hours=1)
-    
-    for i in range(60):
-        timestamp = base_time + timedelta(minutes=i)
-        value = 50 + 20 * np.sin(i/10) + np.random.normal(0, 5)
-        timestamps.append(timestamp.isoformat())
-        values.append(value)
-    
-    sample_data = [{"timestamp": t, "value": v} for t, v in zip(timestamps, values)]
-    sample_data_json = json.dumps(sample_data)
-    
-    try:
-        result = create_timeseries_line_chart.invoke({
-            "data": sample_data_json,
-            "title": "Test CPU Usage",
-            "y_label": "CPU %"
-        })
-        
-        # Parse result to check if it's valid JSON
-        result_data = json.loads(result)
-        if "error" in result_data:
-            print(f"❌ Chart creation failed: {result_data['error']}")
-        else:
-            print("✅ Basic time series chart created successfully")
-    except Exception as e:
-        print(f"❌ Basic chart test failed: {e}")
-    
-    # Test 2: Multi-metric chart
-    print("\n🧪 Testing multi-metric chart...")
-    
-    multi_data = []
-    for i in range(60):
-        timestamp = base_time + timedelta(minutes=i)
-        cpu = 50 + 20 * np.sin(i/10) + np.random.normal(0, 3)
-        memory = 70 + 15 * np.cos(i/8) + np.random.normal(0, 2)
-        multi_data.append({
-            "timestamp": timestamp.isoformat(),
-            "cpu": cpu,
-            "memory": memory
-        })
-    
-    multi_data_json = json.dumps(multi_data)
-    
-    try:
-        result = create_multi_metric_timeseries.invoke({
-            "data": multi_data_json,
-            "metric_columns": "cpu,memory",
-            "title": "Test Multi-Metric Chart"
-        })
-        
-        result_data = json.loads(result)
-        if "error" in result_data:
-            print(f"❌ Multi-metric chart failed: {result_data['error']}")
-        else:
-            print("✅ Multi-metric chart created successfully")
-    except Exception as e:
-        print(f"❌ Multi-metric chart test failed: {e}")
-    
-    # Test 3: Incident timeline
-    print("\n🧪 Testing incident timeline...")
-    
-    # Sample incident data
-    incidents = [
-        {
-            "CreatedDate": (base_time + timedelta(minutes=15)).isoformat(),
-            "Title": "High CPU Alert",
-            "Severity": "Sev1"
-        },
-        {
-            "CreatedDate": (base_time + timedelta(minutes=35)).isoformat(),
-            "Title": "Memory Leak Detected",
-            "Severity": "Sev2"
-        }
+    # Test data - simulating memory usage for multiple pods
+    test_data = [
+        {"timestamp": "2025-01-01T10:00:00Z", "podA_memory": 100, "podB_memory": 120, "podC_memory": 90},
+        {"timestamp": "2025-01-01T10:05:00Z", "podA_memory": 105, "podB_memory": 115, "podC_memory": 95},
+        {"timestamp": "2025-01-01T10:10:00Z", "podA_memory": 110, "podB_memory": 125, "podC_memory": 88},
+        {"timestamp": "2025-01-01T10:15:00Z", "podA_memory": 95, "podB_memory": 130, "podC_memory": 92},
+        {"timestamp": "2025-01-01T10:20:00Z", "podA_memory": 102, "podB_memory": 118, "podC_memory": 85}
     ]
     
-    incidents_json = json.dumps(incidents)
-    metrics_json = sample_data_json  # Reuse the sample data
+    # Convert test data to JSON string
+    test_data_json = json.dumps(test_data)
+    
+    # Create a request for multi-metric chart (like the failing case)
+    request_message = {
+        "messages": [
+            {
+                "role": "user", 
+                "content": f"Create a multi-metric line chart showing RSS memory usage for all pods (podA, podB, podC) over time. Here's the data: {test_data_json}"
+            }
+        ]
+    }
+    
+    print("📝 Sending request to line graph agent...")
+    print(f"Request: Create multi-metric chart for pod memory usage")
     
     try:
-        result = create_incident_timeline.invoke({
-            "incident_data": incidents_json,
-            "metrics_data": metrics_json,
-            "title": "Test Incident Timeline"
-        })
+        # Invoke the agent
+        response = line_graph_agent.invoke(request_message)
         
-        result_data = json.loads(result)
-        if "error" in result_data:
-            print(f"❌ Incident timeline failed: {result_data['error']}")
+        print(f"\n📤 Agent Response Type: {type(response)}")
+        
+        # Extract the final message content
+        if isinstance(response, dict) and 'messages' in response:
+            final_message = response['messages'][-1]['content']
         else:
-            print("✅ Incident timeline created successfully")
-    except Exception as e:
-        print(f"❌ Incident timeline test failed: {e}")
-    
-    print("\n🎉 Line graph agent testing completed!")
-    return True
-
-def test_supervisor_integration():
-    """Test that the supervisor includes the line graph agent."""
-    
-    try:
-        from supervisor_agent import supervisor, create_dynamic_supervisor
-        print("✅ Successfully imported supervisor functions")
+            final_message = str(response)
         
-        # Test creating a dynamic supervisor
-        dynamic_sup = create_dynamic_supervisor(temperature=0.5)
-        print("✅ Dynamic supervisor with line graph agent created successfully")
+        print(f"📄 Final Message Length: {len(final_message)} characters")
+        print(f"🔍 First 200 chars: {final_message[:200]}")
         
-        return True
-    except ImportError as e:
-        print(f"❌ Failed to import supervisor: {e}")
-        return False
+        # Check if the response contains JSON (indicating tool was called)
+        has_json = '"type": "plotly_figure"' in final_message or '"figure_data"' in final_message
+        has_tool_call = 'create_' in final_message and ('timeseries' in final_message or 'multi_metric' in final_message)
+        
+        print(f"\n📊 Analysis:")
+        print(f"  ✅ Contains JSON: {has_json}")
+        print(f"  ✅ Contains tool call evidence: {has_tool_call}")
+        
+        if has_json:
+            print("  🎯 SUCCESS: Agent called chart creation tool and returned JSON!")
+        else:
+            print("  ❌ FAILURE: Agent did not call chart creation tool")
+            print(f"  📜 Full response: {final_message}")
+        
+        return has_json
+        
     except Exception as e:
-        print(f"❌ Supervisor integration test failed: {e}")
+        print(f"❌ Error testing line graph agent: {str(e)}")
         return False
 
 if __name__ == "__main__":
-    print("🚀 Starting Line Graph Agent Test Suite")
-    print("=" * 50)
-    
-    # Test the line graph tools
-    tools_success = test_line_graph_tools()
-    
-    print("\n" + "=" * 50)
-    
-    # Test supervisor integration
-    supervisor_success = test_supervisor_integration()
-    
-    print("\n" + "=" * 50)
-    print(f"📊 Test Results:")
-    print(f"   Line Graph Tools: {'✅ PASS' if tools_success else '❌ FAIL'}")
-    print(f"   Supervisor Integration: {'✅ PASS' if supervisor_success else '❌ FAIL'}")
-    
-    if tools_success and supervisor_success:
-        print("\n🎉 All tests passed! Line Graph Agent is ready to use.")
+    success = test_line_graph_agent()
+    if success:
+        print("\n🎉 Test PASSED: Line graph agent is calling tools correctly!")
     else:
-        print("\n⚠️  Some tests failed. Please check the implementation.")
+        print("\n💥 Test FAILED: Line graph agent is not calling tools!")
+    
+    sys.exit(0 if success else 1)
