@@ -36,7 +36,11 @@ def get_secret_from_keyvault(secret_name, vault_url):
     Reads a secret from Azure Key Vault using ManagedIdentityCredential.
     """
     try:
-        credential = ManagedIdentityCredential()
+        # Get client id from ENV variable
+        client_id = os.getenv("AZURE_CLIENT_ID")
+        if not client_id:
+            raise ValueError("AZURE_CLIENT_ID not set")
+        credential = ManagedIdentityCredential(client_id=client_id)
         client = SecretClient(vault_url=vault_url, credential=credential)
         secret = client.get_secret(secret_name)
         if not secret.value:
