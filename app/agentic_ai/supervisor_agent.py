@@ -49,23 +49,19 @@ def get_secret_from_keyvault(secret_name, vault_url):
     except Exception as e:
         raise RuntimeError(f"Failed to retrieve secret '{secret_name}' from Key Vault: {e}")
 
-# Import configuration
-try:
-    from config import *
-except ImportError:
-    # Fallback values if config.py is not found
-    VAULT_URL = "https://argusaskagenthackathonkv.vault.azure.net/"
-    KUSTO_CLUSTER_URI = "https://argushackathoncluster.westus.kusto.windows.net"
-    KUSTO_DATABASE = "ArgusAskJarvisDB"
-    KUSTO_INCIDENT_TABLE = "IcMDataWarehouse"
-    KUSTO_DEPLOYMENT_TABLE = "DeploymentEvents"
-    KUSTO_CLIENT_ID = get_secret_from_keyvault("KUSTOCLIENTID", VAULT_URL)
-    KUSTO_TENANT_ID = get_secret_from_keyvault("TENANTID", VAULT_URL)
-    PROMETHEUS_QUERY_ENDPOINT = "https://amw-argus-hack25-gqczh3d4b2d8d3en.westus.prometheus.monitor.azure.com"
-    PROMETHEUS_CLIENT_ID = get_secret_from_keyvault("PROMETHEUSCLIENTID", VAULT_URL)
-    LOG_ANALYTICS_WORKSPACE_ID = "f4576696-34ed-4caf-acd6-695a69f857d0"
-    LOG_ANALYTICS_CLIENT_ID = get_secret_from_keyvault("LOGANALYTICSCLIENTID", VAULT_URL)
-    OPEN_AI_API_KEY = get_secret_from_keyvault("AZUREOPENAIKEY", VAULT_URL)
+# Fallback values if config.py is not found
+VAULT_URL = "https://argusaskagenthackathonkv.vault.azure.net/"
+KUSTO_CLUSTER_URI = "https://argushackathoncluster.westus.kusto.windows.net"
+KUSTO_DATABASE = "ArgusAskJarvisDB"
+KUSTO_INCIDENT_TABLE = "IcMDataWarehouse"
+KUSTO_DEPLOYMENT_TABLE = "DeploymentEvents"
+KUSTO_CLIENT_ID = get_secret_from_keyvault("KUSTOCLIENTID", VAULT_URL)
+KUSTO_TENANT_ID = get_secret_from_keyvault("TENANTID", VAULT_URL)
+PROMETHEUS_QUERY_ENDPOINT = "https://amw-argus-hack25-gqczh3d4b2d8d3en.westus.prometheus.monitor.azure.com"
+PROMETHEUS_CLIENT_ID = get_secret_from_keyvault("PROMETHEUSCLIENTID", VAULT_URL)
+LOG_ANALYTICS_WORKSPACE_ID = "f4576696-34ed-4caf-acd6-695a69f857d0"
+LOG_ANALYTICS_CLIENT_ID = get_secret_from_keyvault("LOGANALYTICSCLIENTID", VAULT_URL)
+OPEN_AI_API_KEY = get_secret_from_keyvault("AZUREOPENAIKEY", VAULT_URL)
 
 
 # Initialize the model (default temperature)
