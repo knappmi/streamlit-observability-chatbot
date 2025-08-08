@@ -2,7 +2,10 @@ import streamlit as st
 import sys
 import os
 import re
+import json
 from datetime import datetime
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Configure page settings - must be first Streamlit command
 st.set_page_config(
@@ -71,6 +74,100 @@ def extract_response_content(result):
                         return content
     
     return "I processed your request, but couldn't generate a response."
+
+def extract_and_render_plotly_charts(response):
+    """
+    Extract Plotly chart data from response and render them in Streamlit.
+    Returns the cleaned response text.
+    """
+    import json
+    import plotly.graph_objects as go
+    
+    charts_rendered = 0
+    cleaned_response = response
+    
+    # Look for plotly figure objects in the response
+    # Pattern to find figure data objects
+    import re
+    
+    # Look for the specific pattern our tools return
+    pattern = r'\{[^{}]*"type":\s*"plotly_figure"[^{}]*\}'
+    
+    # Find all potential chart objects
+    chart_matches = []
+    
+    # More comprehensive search for nested JSON structures
+    i = 0
+    while i < len(response):
+        if response[i:].startswith('{"type": "plotly_figure"') or response[i:].find('"type": "plotly_figure"') != -1:
+            # Find the complete JSON object
+            brace_count = 0
+            start = i
+            j = i
+            in_json = False
+            
+            while j < len(response):
+                if response[j] == '{':
+                    if not in_json:
+                        start = j
+                        in_json = True
+                    brace_count += 1
+                elif response[j] == '}':
+                    brace_count -= 1
+                    if brace_count == 0 and in_json:
+                        # Found complete JSON object
+                        json_str = response[start:j+1]
+                        try:
+                            parsed = json.loads(json_str)
+                            if isinstance(parsed, dict) and parsed.get('type') == 'plotly_figure':
+                                chart_matches.append((start, j+1, json_str, parsed))
+                                i = j + 1
+                                break
+                        except json.JSONDecodeError:
+                            pass
+                j += 1
+            else:
+                i += 1
+        else:
+            i += 1
+    
+    # Sort matches by position (descending) to remove from end to beginning
+    chart_matches.sort(key=lambda x: x[0], reverse=True)
+    
+    for start_pos, end_pos, json_str, chart_data in chart_matches:
+        try:
+            if 'error' in chart_data:
+                st.error(f"Chart Error: {chart_data['error']}")
+            elif 'figure_data' in chart_data:
+                # Create Plotly figure from the data dictionary
+                fig = go.Figure(chart_data['figure_data'])
+                st.plotly_chart(fig, use_container_width=True)
+                charts_rendered += 1
+                
+                # Add description if available
+                if 'description' in chart_data:
+                    st.caption(f"📊 {chart_data['description']}")
+            
+            # Remove the JSON from the response text
+            cleaned_response = cleaned_response[:start_pos] + cleaned_response[end_pos:]
+            
+        except Exception as e:
+            st.error(f"Error rendering chart: {str(e)}")
+            # Still remove the JSON from response
+            cleaned_response = cleaned_response[:start_pos] + cleaned_response[end_pos:]
+    
+    if charts_rendered > 0:
+        st.success(f"📈 Rendered {charts_rendered} visualization{'s' if charts_rendered != 1 else ''}")
+    
+    return cleaned_response.strip()
+
+def check_for_plotly_figures_in_result(result):
+    """
+    Check if the supervisor result contains Plotly Figure objects and render them.
+    Returns True if figures were found and rendered, False otherwise.
+    """
+    # This function is now handled by extract_and_render_plotly_charts
+    return False
 
 def update_context_from_response(response, context):
     """Update session context based on the assistant's response."""
@@ -743,8 +840,14 @@ if prompt := st.chat_input("Ask me anything about your infrastructure..."):
             # Update context based on response
             update_context_from_response(response, st.session_state.context)
             
-            # Display the response
-            message_placeholder.markdown(response)
+            # Extract and render any Plotly charts, get cleaned response
+            cleaned_response = extract_and_render_plotly_charts(response)
+            
+            # Display the cleaned response (without JSON chart data)
+            if cleaned_response.strip():
+                message_placeholder.markdown(cleaned_response)
+            else:
+                message_placeholder.markdown("✅ Visualization complete!")
             
             # Generate temperature label
             if st.session_state.selected_model_type == "standard":
@@ -756,10 +859,10 @@ if prompt := st.chat_input("Ask me anything about your infrastructure..."):
                            "Creative" if st.session_state.selected_temperature <= 0.8 else "Very Creative"
                 temp_label = f"Experimental ({st.session_state.selected_temperature}) - {temp_desc}"
             
-            # Add assistant response to conversation history
+            # Add assistant response to conversation history (use cleaned response)
             assistant_message = {
                 "role": "assistant", 
-                "content": response,
+                "content": cleaned_response if cleaned_response.strip() else "✅ Visualization complete!",
                 "timestamp": datetime.now().strftime("%H:%M:%S"),
                 "response_time": f"{response_time:.2f}s",
                 "temperature": st.session_state.selected_temperature,

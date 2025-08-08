@@ -296,7 +296,7 @@ def create_timeseries_line_chart(
     title: str = "Time Series Data",
     x_label: str = "Time",
     y_label: str = "Value"
-) -> str:
+):
     """
     Create an interactive line chart from time series data.
     
@@ -309,7 +309,7 @@ def create_timeseries_line_chart(
         y_label: Label for y-axis
     
     Returns:
-        JSON string containing the Plotly figure
+        Plotly Figure object or error dict
     """
     try:
         # Parse the data
@@ -322,11 +322,11 @@ def create_timeseries_line_chart(
         df = pd.DataFrame(data_list)
         
         if df.empty:
-            return json.dumps({"error": "No data provided"})
+            return {"error": "No data provided"}
         
         # Ensure we have the required columns
         if x_column not in df.columns or y_column not in df.columns:
-            return json.dumps({"error": f"Required columns {x_column} and {y_column} not found in data"})
+            return {"error": f"Required columns {x_column} and {y_column} not found in data"}
         
         # Convert timestamp column to datetime if it's not already
         if df[x_column].dtype == 'object':
@@ -355,10 +355,10 @@ def create_timeseries_line_chart(
             template='plotly_white'
         )
         
-        return fig.to_json()
+        return {"type": "plotly_figure", "figure_data": fig.to_dict(), "description": f"Created time series chart: {title}"}
         
     except Exception as e:
-        return json.dumps({"error": f"Error creating chart: {str(e)}"})
+        return {"error": f"Error creating chart: {str(e)}"}
 
 @tool
 def create_multi_metric_timeseries(
@@ -367,7 +367,7 @@ def create_multi_metric_timeseries(
     metric_columns: str = "value1,value2", 
     title: str = "Multi-Metric Time Series",
     x_label: str = "Time"
-) -> str:
+):
     """
     Create an interactive line chart with multiple metrics on the same plot.
     
@@ -379,7 +379,7 @@ def create_multi_metric_timeseries(
         x_label: Label for x-axis
     
     Returns:
-        JSON string containing the Plotly figure
+        Plotly Figure object or error dict
     """
     try:
         # Parse the data
@@ -392,7 +392,7 @@ def create_multi_metric_timeseries(
         df = pd.DataFrame(data_list)
         
         if df.empty:
-            return json.dumps({"error": "No data provided"})
+            return {"error": "No data provided"}
         
         # Parse metric columns
         metrics = [col.strip() for col in metric_columns.split(',')]
@@ -400,7 +400,7 @@ def create_multi_metric_timeseries(
         # Ensure we have the required columns
         missing_cols = [col for col in [x_column] + metrics if col not in df.columns]
         if missing_cols:
-            return json.dumps({"error": f"Missing columns: {missing_cols}"})
+            return {"error": f"Missing columns: {missing_cols}"}
         
         # Convert timestamp column to datetime if it's not already
         if df[x_column].dtype == 'object':
@@ -439,10 +439,10 @@ def create_multi_metric_timeseries(
             )
         )
         
-        return fig.to_json()
+        return {"type": "plotly_figure", "figure_data": fig.to_dict(), "description": f"Created multi-metric chart: {title}"}
         
     except Exception as e:
-        return json.dumps({"error": f"Error creating multi-metric chart: {str(e)}"})
+        return {"error": f"Error creating multi-metric chart: {str(e)}"}
 
 @tool
 def create_incident_timeline(
@@ -452,7 +452,7 @@ def create_incident_timeline(
     incident_title_column: str = "Title",
     incident_severity_column: str = "Severity",
     title: str = "Incident Timeline with Metrics"
-) -> str:
+):
     """
     Create a timeline chart showing incidents overlaid with system metrics.
     
@@ -465,7 +465,7 @@ def create_incident_timeline(
         title: Chart title
     
     Returns:
-        JSON string containing the Plotly figure
+        Plotly Figure object or error dict
     """
     try:
         # Parse incident data
@@ -562,12 +562,10 @@ def create_incident_timeline(
         fig.update_yaxes(title_text="Metric Value", row=1, col=1)
         fig.update_yaxes(title_text="Incidents", row=2, col=1, showticklabels=False)
         
-        return fig.to_json()
+        return {"type": "plotly_figure", "figure_data": fig.to_dict(), "description": f"Created incident timeline: {title}"}
         
     except Exception as e:
-        return json.dumps({"error": f"Error creating incident timeline: {str(e)}"})
-
-@tool  
+        return {"error": f"Error creating incident timeline: {str(e)}"}@tool  
 def create_deployment_impact_chart(
     deployment_data: str,
     metrics_data: str,
@@ -576,7 +574,7 @@ def create_deployment_impact_chart(
     metric_time_column: str = "timestamp",
     metric_value_column: str = "value",
     title: str = "Deployment Impact Analysis"
-) -> str:
+):
     """
     Create a chart showing deployment events and their impact on system metrics.
     
@@ -590,7 +588,7 @@ def create_deployment_impact_chart(
         title: Chart title
     
     Returns:
-        JSON string containing the Plotly figure
+        Plotly Figure object or error dict
     """
     try:
         # Parse data
@@ -605,7 +603,7 @@ def create_deployment_impact_chart(
             metrics = metrics_data
         
         if not deployments or not metrics:
-            return json.dumps({"error": "Both deployment and metrics data are required"})
+            return {"error": "Both deployment and metrics data are required"}
         
         # Convert to DataFrames
         df_deployments = pd.DataFrame(deployments)
@@ -671,10 +669,10 @@ def create_deployment_impact_chart(
             hovermode='x unified'
         )
         
-        return fig.to_json()
+        return {"type": "plotly_figure", "figure_data": fig.to_dict(), "description": f"Created deployment impact chart: {title}"}
         
     except Exception as e:
-        return json.dumps({"error": f"Error creating deployment impact chart: {str(e)}"})
+        return {"error": f"Error creating deployment impact chart: {str(e)}"}
 
 # Define the Kusto agent
 kusto_agent = create_react_agent(
