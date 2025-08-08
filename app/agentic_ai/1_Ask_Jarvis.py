@@ -363,6 +363,20 @@ with st.sidebar:
                     "- The default workspace ID and authentication are already configured\n"
                     "- Focus on retrieving logs, traces, and telemetry data for troubleshooting\n"
                     "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                ),
+                "line_graph": (
+                    "You are a Line Graph visualization agent that creates interactive time series charts and visualizations. "
+                    "You can create various types of charts to help users visualize their observability data over time.\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Use create_timeseries_line_chart() for basic time series line charts with a single metric\n"
+                    "- Use create_multi_metric_timeseries() for charts with multiple metrics on the same plot\n"
+                    "- Use create_incident_timeline() to create timeline charts showing incidents overlaid with system metrics\n"
+                    "- Use create_deployment_impact_chart() to visualize how deployments impact system metrics\n"
+                    "- Always ensure data is properly formatted as JSON strings before passing to tools\n"
+                    "- Focus on creating clear, interactive visualizations that help users understand their data\n"
+                    "- When receiving data from other agents, transform it appropriately for visualization\n"
+                    "- Provide helpful context about what the charts show and any patterns or anomalies visible\n"
+                    "- Return the chart JSON and a brief description of what the visualization shows"
                 )
             }
         
@@ -391,6 +405,15 @@ with st.sidebar:
                 value=st.session_state.custom_prompts["log_analytics"],
                 height=200,
                 help="Define how the Log Analytics agent should behave when querying logs"
+            )
+        
+        # Line Graph Agent Prompt
+        with st.expander("📈 Line Graph Agent Prompt", expanded=False):
+            st.session_state.custom_prompts["line_graph"] = st.text_area(
+                "Line Graph Agent Instructions:",
+                value=st.session_state.custom_prompts["line_graph"],
+                height=200,
+                help="Define how the Line Graph agent should behave when creating visualizations"
             )
         
         # Reset to defaults button
@@ -433,6 +456,20 @@ with st.sidebar:
                     "- The default workspace ID and authentication are already configured\n"
                     "- Focus on retrieving logs, traces, and telemetry data for troubleshooting\n"
                     "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                ),
+                "line_graph": (
+                    "You are a Line Graph visualization agent that creates interactive time series charts and visualizations. "
+                    "You can create various types of charts to help users visualize their observability data over time.\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Use create_timeseries_line_chart() for basic time series line charts with a single metric\n"
+                    "- Use create_multi_metric_timeseries() for charts with multiple metrics on the same plot\n"
+                    "- Use create_incident_timeline() to create timeline charts showing incidents overlaid with system metrics\n"
+                    "- Use create_deployment_impact_chart() to visualize how deployments impact system metrics\n"
+                    "- Always ensure data is properly formatted as JSON strings before passing to tools\n"
+                    "- Focus on creating clear, interactive visualizations that help users understand their data\n"
+                    "- When receiving data from other agents, transform it appropriately for visualization\n"
+                    "- Provide helpful context about what the charts show and any patterns or anomalies visible\n"
+                    "- Return the chart JSON and a brief description of what the visualization shows"
                 )
             }
             st.success("✅ Prompts reset to defaults!")
@@ -483,6 +520,20 @@ with st.sidebar:
                     "- The default workspace ID and authentication are already configured\n"
                     "- Focus on retrieving logs, traces, and telemetry data for troubleshooting\n"
                     "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                ),
+                "line_graph": (
+                    "You are a Line Graph visualization agent that creates interactive time series charts and visualizations. "
+                    "You can create various types of charts to help users visualize their observability data over time.\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Use create_timeseries_line_chart() for basic time series line charts with a single metric\n"
+                    "- Use create_multi_metric_timeseries() for charts with multiple metrics on the same plot\n"
+                    "- Use create_incident_timeline() to create timeline charts showing incidents overlaid with system metrics\n"
+                    "- Use create_deployment_impact_chart() to visualize how deployments impact system metrics\n"
+                    "- Always ensure data is properly formatted as JSON strings before passing to tools\n"
+                    "- Focus on creating clear, interactive visualizations that help users understand their data\n"
+                    "- When receiving data from other agents, transform it appropriately for visualization\n"
+                    "- Provide helpful context about what the charts show and any patterns or anomalies visible\n"
+                    "- Return the chart JSON and a brief description of what the visualization shows"
                 )
             }
     
@@ -595,7 +646,7 @@ with st.sidebar:
         st.write(f"**Custom Prompts:** ✅ Active")
     else:
         st.write(f"**Temperature:** 0.1 (Fixed - Conservative)")
-        st.write(f"**Custom Prompts:** ❌ Default")
+        st.write(f"**Custom Prompts:** Default")
     
     # Display current context
     st.subheader("🎯 Active Context")
@@ -760,10 +811,18 @@ if len(st.session_state.messages) == 0:
     - "Get container logs for failed pods"
     - "Find logs related to the current incident"
     
+    **Time Series Visualizations:**
+    - "Create a line chart of CPU usage over the last hour"
+    - "Show me a timeline of incidents with system metrics"
+    - "Graph the impact of deployments on error rates"
+    - "Create a multi-metric chart showing CPU and memory trends"
+    - "Visualize incident patterns over time"
+    
     **Contextual Follow-ups:**
     - "Tell me more about that incident"
     - "What were the metrics during that deployment?"
     - "Show me logs from the same timeframe"
+    - "Graph the metrics around that incident"
     
     ---
     
@@ -776,7 +835,13 @@ if len(st.session_state.messages) == 0:
     
     **Model Selection:**
     - 🤖 **Standard Model**: Consistent, reliable responses (temp: 0.1)
-    - 🧪 **Experimental Model**: Customizable creativity and agent prompts
+    - 🧪 **Experimental Model**: Customizable creativity and agent prompts (includes visualization agent)
+    
+    **Visualization Features:**
+    - 📈 **Line Charts**: Time series data visualization with interactive plots
+    - 📊 **Multi-Metric Charts**: Compare multiple metrics on the same timeline
+    - 🎯 **Incident Timelines**: Overlay incidents on system metrics
+    - 🚀 **Deployment Impact**: Visualize how deployments affect system performance
     """)
 
 # Footer with session info

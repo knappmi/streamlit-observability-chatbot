@@ -10,6 +10,13 @@ from azure.monitor.query import LogsQueryClient, LogsQueryStatus
 from datetime import timedelta
 import requests
 import os
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+import json
+from datetime import datetime, timedelta
 
 # Import configuration
 try:
@@ -280,6 +287,395 @@ def query_log_analytics_tool(
     except Exception as e:
         return [{"exception": str(e)}]
 
+# === Line Graph Visualization Tools ===
+@tool
+def create_timeseries_line_chart(
+    data: str,
+    x_column: str = "timestamp",
+    y_column: str = "value", 
+    title: str = "Time Series Data",
+    x_label: str = "Time",
+    y_label: str = "Value"
+) -> str:
+    """
+    Create an interactive line chart from time series data.
+    
+    Args:
+        data: JSON string containing the time series data
+        x_column: Name of the column containing time/date values
+        y_column: Name of the column containing numeric values
+        title: Chart title
+        x_label: Label for x-axis
+        y_label: Label for y-axis
+    
+    Returns:
+        JSON string containing the Plotly figure
+    """
+    try:
+        # Parse the data
+        if isinstance(data, str):
+            data_list = json.loads(data)
+        else:
+            data_list = data
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(data_list)
+        
+        if df.empty:
+            return json.dumps({"error": "No data provided"})
+        
+        # Ensure we have the required columns
+        if x_column not in df.columns or y_column not in df.columns:
+            return json.dumps({"error": f"Required columns {x_column} and {y_column} not found in data"})
+        
+        # Convert timestamp column to datetime if it's not already
+        if df[x_column].dtype == 'object':
+            df[x_column] = pd.to_datetime(df[x_column])
+        
+        # Sort by time
+        df = df.sort_values(x_column)
+        
+        # Create the line chart
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df[x_column],
+            y=df[y_column],
+            mode='lines+markers',
+            name=y_label,
+            line=dict(width=2),
+            marker=dict(size=4)
+        ))
+        
+        # Update layout
+        fig.update_layout(
+            title=title,
+            xaxis_title=x_label,
+            yaxis_title=y_label,
+            hovermode='x unified',
+            template='plotly_white'
+        )
+        
+        return fig.to_json()
+        
+    except Exception as e:
+        return json.dumps({"error": f"Error creating chart: {str(e)}"})
+
+@tool
+def create_multi_metric_timeseries(
+    data: str,
+    x_column: str = "timestamp",
+    metric_columns: str = "value1,value2", 
+    title: str = "Multi-Metric Time Series",
+    x_label: str = "Time"
+) -> str:
+    """
+    Create an interactive line chart with multiple metrics on the same plot.
+    
+    Args:
+        data: JSON string containing the time series data
+        x_column: Name of the column containing time/date values
+        metric_columns: Comma-separated list of column names to plot as metrics
+        title: Chart title
+        x_label: Label for x-axis
+    
+    Returns:
+        JSON string containing the Plotly figure
+    """
+    try:
+        # Parse the data
+        if isinstance(data, str):
+            data_list = json.loads(data)
+        else:
+            data_list = data
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(data_list)
+        
+        if df.empty:
+            return json.dumps({"error": "No data provided"})
+        
+        # Parse metric columns
+        metrics = [col.strip() for col in metric_columns.split(',')]
+        
+        # Ensure we have the required columns
+        missing_cols = [col for col in [x_column] + metrics if col not in df.columns]
+        if missing_cols:
+            return json.dumps({"error": f"Missing columns: {missing_cols}"})
+        
+        # Convert timestamp column to datetime if it's not already
+        if df[x_column].dtype == 'object':
+            df[x_column] = pd.to_datetime(df[x_column])
+        
+        # Sort by time
+        df = df.sort_values(x_column)
+        
+        # Create the multi-line chart
+        fig = go.Figure()
+        
+        colors = px.colors.qualitative.Set1
+        for i, metric in enumerate(metrics):
+            fig.add_trace(go.Scatter(
+                x=df[x_column],
+                y=df[metric],
+                mode='lines+markers',
+                name=metric,
+                line=dict(width=2, color=colors[i % len(colors)]),
+                marker=dict(size=4)
+            ))
+        
+        # Update layout
+        fig.update_layout(
+            title=title,
+            xaxis_title=x_label,
+            yaxis_title="Value",
+            hovermode='x unified',
+            template='plotly_white',
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        
+        return fig.to_json()
+        
+    except Exception as e:
+        return json.dumps({"error": f"Error creating multi-metric chart: {str(e)}"})
+
+@tool
+def create_incident_timeline(
+    incident_data: str,
+    metrics_data: str = "[]",
+    incident_time_column: str = "CreatedDate",
+    incident_title_column: str = "Title",
+    incident_severity_column: str = "Severity",
+    title: str = "Incident Timeline with Metrics"
+) -> str:
+    """
+    Create a timeline chart showing incidents overlaid with system metrics.
+    
+    Args:
+        incident_data: JSON string containing incident data
+        metrics_data: JSON string containing metrics data (optional)
+        incident_time_column: Column name for incident timestamps
+        incident_title_column: Column name for incident titles
+        incident_severity_column: Column name for incident severity
+        title: Chart title
+    
+    Returns:
+        JSON string containing the Plotly figure
+    """
+    try:
+        # Parse incident data
+        if isinstance(incident_data, str):
+            incidents = json.loads(incident_data)
+        else:
+            incidents = incident_data
+        
+        # Parse metrics data
+        if isinstance(metrics_data, str):
+            metrics = json.loads(metrics_data) if metrics_data != "[]" else []
+        else:
+            metrics = metrics_data or []
+        
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            subplot_titles=('System Metrics', 'Incidents'),
+            vertical_spacing=0.1,
+            row_heights=[0.7, 0.3]
+        )
+        
+        # Add metrics if provided
+        if metrics:
+            df_metrics = pd.DataFrame(metrics)
+            if 'timestamp' in df_metrics.columns and 'value' in df_metrics.columns:
+                df_metrics['timestamp'] = pd.to_datetime(df_metrics['timestamp'])
+                df_metrics = df_metrics.sort_values('timestamp')
+                
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_metrics['timestamp'],
+                        y=df_metrics['value'],
+                        mode='lines',
+                        name='Metric',
+                        line=dict(color='blue', width=2)
+                    ),
+                    row=1, col=1
+                )
+        
+        # Add incidents
+        if incidents:
+            df_incidents = pd.DataFrame(incidents)
+            if incident_time_column in df_incidents.columns:
+                df_incidents[incident_time_column] = pd.to_datetime(df_incidents[incident_time_column])
+                
+                # Color mapping for severity
+                severity_colors = {
+                    'Sev0': 'red', 'P0': 'red', '0': 'red',
+                    'Sev1': 'orange', 'P1': 'orange', '1': 'orange',
+                    'Sev2': 'yellow', 'P2': 'yellow', '2': 'yellow',
+                    'Sev3': 'green', 'P3': 'green', '3': 'green',
+                    'Sev4': 'blue', 'P4': 'blue', '4': 'blue'
+                }
+                
+                for idx, incident in df_incidents.iterrows():
+                    severity = str(incident.get(incident_severity_column, 'Unknown'))
+                    color = severity_colors.get(severity, 'gray')
+                    incident_title = incident.get(incident_title_column, f"Incident {idx}")
+                    
+                    # Add vertical line for incident
+                    fig.add_vline(
+                        x=incident[incident_time_column],
+                        line_dash="dash",
+                        line_color=color,
+                        annotation_text=f"{severity}: {incident_title[:30]}...",
+                        annotation_position="top"
+                    )
+                    
+                    # Add scatter point on incident timeline
+                    fig.add_trace(
+                        go.Scatter(
+                            x=[incident[incident_time_column]],
+                            y=[0],  # Use 0 instead of 1
+                            mode='markers',
+                            name=f"Sev {severity}",
+                            marker=dict(color=color, size=10, symbol='diamond'),
+                            text=incident_title,
+                            hovertemplate=f"<b>{incident_title}</b><br>Severity: {severity}<br>Time: %{{x}}<extra></extra>",
+                            showlegend=False
+                        ),
+                        row=2, col=1
+                    )
+        
+        # Update layout
+        fig.update_layout(
+            title=title,
+            template='plotly_white',
+            showlegend=True,
+            height=600
+        )
+        
+        fig.update_xaxes(title_text="Time", row=2, col=1)
+        fig.update_yaxes(title_text="Metric Value", row=1, col=1)
+        fig.update_yaxes(title_text="Incidents", row=2, col=1, showticklabels=False)
+        
+        return fig.to_json()
+        
+    except Exception as e:
+        return json.dumps({"error": f"Error creating incident timeline: {str(e)}"})
+
+@tool  
+def create_deployment_impact_chart(
+    deployment_data: str,
+    metrics_data: str,
+    deployment_time_column: str = "DeploymentTime", 
+    deployment_name_column: str = "DeploymentName",
+    metric_time_column: str = "timestamp",
+    metric_value_column: str = "value",
+    title: str = "Deployment Impact Analysis"
+) -> str:
+    """
+    Create a chart showing deployment events and their impact on system metrics.
+    
+    Args:
+        deployment_data: JSON string containing deployment data
+        metrics_data: JSON string containing metrics data
+        deployment_time_column: Column name for deployment timestamps
+        deployment_name_column: Column name for deployment names
+        metric_time_column: Column name for metric timestamps
+        metric_value_column: Column name for metric values
+        title: Chart title
+    
+    Returns:
+        JSON string containing the Plotly figure
+    """
+    try:
+        # Parse data
+        if isinstance(deployment_data, str):
+            deployments = json.loads(deployment_data)
+        else:
+            deployments = deployment_data
+        
+        if isinstance(metrics_data, str):
+            metrics = json.loads(metrics_data)
+        else:
+            metrics = metrics_data
+        
+        if not deployments or not metrics:
+            return json.dumps({"error": "Both deployment and metrics data are required"})
+        
+        # Convert to DataFrames
+        df_deployments = pd.DataFrame(deployments)
+        df_metrics = pd.DataFrame(metrics)
+        
+        # Convert timestamps
+        df_deployments[deployment_time_column] = pd.to_datetime(df_deployments[deployment_time_column])
+        df_metrics[metric_time_column] = pd.to_datetime(df_metrics[metric_time_column])
+        
+        # Sort data
+        df_deployments = df_deployments.sort_values(deployment_time_column)
+        df_metrics = df_metrics.sort_values(metric_time_column)
+        
+        # Create figure
+        fig = go.Figure()
+        
+        # Add metrics line
+        fig.add_trace(go.Scatter(
+            x=df_metrics[metric_time_column],
+            y=df_metrics[metric_value_column],
+            mode='lines+markers',
+            name='System Metric',
+            line=dict(color='blue', width=2),
+            marker=dict(size=4)
+        ))
+        
+        # Add deployment markers
+        for idx, deployment in df_deployments.iterrows():
+            deployment_time = deployment[deployment_time_column]
+            deployment_name = deployment.get(deployment_name_column, f"Deployment {idx}")
+            
+            # Find metric value at deployment time (or closest)
+            time_diff = abs(df_metrics[metric_time_column] - deployment_time)
+            closest_metric_idx = time_diff.idxmin()
+            metric_value = df_metrics.loc[closest_metric_idx, metric_value_column]
+            
+            # Add vertical line for deployment
+            fig.add_vline(
+                x=deployment_time,
+                line_dash="dash", 
+                line_color="red",
+                annotation_text=f"Deploy: {deployment_name}",
+                annotation_position="top"
+            )
+            
+            # Add deployment marker
+            fig.add_trace(go.Scatter(
+                x=[deployment_time],
+                y=[metric_value],
+                mode='markers',
+                name=f"Deploy: {deployment_name}",
+                marker=dict(color='red', size=12, symbol='triangle-up'),
+                text=deployment_name,
+                hovertemplate=f"<b>{deployment_name}</b><br>Time: %{{x}}<br>Metric: %{{y}}<extra></extra>"
+            ))
+        
+        # Update layout
+        fig.update_layout(
+            title=title,
+            xaxis_title="Time",
+            yaxis_title="Metric Value", 
+            template='plotly_white',
+            hovermode='x unified'
+        )
+        
+        return fig.to_json()
+        
+    except Exception as e:
+        return json.dumps({"error": f"Error creating deployment impact chart: {str(e)}"})
+
 # Define the Kusto agent
 kusto_agent = create_react_agent(
     model=model_to_use,
@@ -348,17 +744,45 @@ log_analytics_agent = create_react_agent(
     name="log_analytics_agent",
 )
 
+# Define the Line Graph agent
+line_graph_agent = create_react_agent(
+    model=model_to_use,
+    tools=[
+        create_timeseries_line_chart,
+        create_multi_metric_timeseries, 
+        create_incident_timeline,
+        create_deployment_impact_chart
+    ],
+    prompt=(
+        "You are a Line Graph visualization agent that creates interactive time series charts and visualizations. "
+        "You can create various types of charts to help users visualize their observability data over time.\n\n"
+        "INSTRUCTIONS:\n"
+        "- Use create_timeseries_line_chart() for basic time series line charts with a single metric\n"
+        "- Use create_multi_metric_timeseries() for charts with multiple metrics on the same plot\n"
+        "- Use create_incident_timeline() to create timeline charts showing incidents overlaid with system metrics\n"
+        "- Use create_deployment_impact_chart() to visualize how deployments impact system metrics\n"
+        "- Always ensure data is properly formatted as JSON strings before passing to tools\n"
+        "- Focus on creating clear, interactive visualizations that help users understand their data\n"
+        "- When receiving data from other agents, transform it appropriately for visualization\n"
+        "- Provide helpful context about what the charts show and any patterns or anomalies visible\n"
+        "- Return the chart JSON and a brief description of what the visualization shows"
+    ),
+    name="line_graph_agent",
+)
+
 # Define the supervisor agent
 supervisor = create_supervisor(
     model=model_to_use,
-    agents=[kusto_agent, prometheus_agent, log_analytics_agent],
+    agents=[kusto_agent, prometheus_agent, log_analytics_agent, line_graph_agent],
     prompt=(
         "You are a supervisor managing the following agents:\n"
         "- a kusto agent. Use this agent to get relevant data from azure data explorer(kusto). You can use this agent to get incident details from IcMDataWarehouse table and deployment information from DeploymentEvents table. It can correlate incidents with deployments to identify deployment-related issues.\n"
         "- a prometheus agent. Use this agent to get relevant data from azure monitor workspace(prometheus). You can use this agent to get the metrics that are relevant to the icm, to run promql query for those selected metrics and to analyze the data the query returns\n"
         "- a log analytics agent. Use this agent to query Azure Monitor Logs using Kusto language. It can retrieve logs like errors, health checks, request traces, and other structured logs from ContainerLogV2 and related tables\n"
+        "- a line graph agent. Use this agent to create interactive time series visualizations from data obtained by other agents. It can create basic line charts, multi-metric overlays, incident timelines, and deployment impact charts.\n"
         "Assign work to one agent at a time, do not call agents in parallel.\n"
         "Do not do any work yourself.\n"
+        "When users ask for charts, graphs, or visualizations of time series data, use the line graph agent after obtaining the data from other agents.\n"
         "When users refer to 'that incident', 'the deployment', or 'the current issue', use any provided context to understand what they're referring to.\n"
         "If a user asks follow-up questions without context, ask for clarification about which specific incident, deployment, or issue they mean."
     ),
@@ -384,14 +808,16 @@ def create_context_aware_supervisor(session_context=None):
     
     return create_supervisor(
         model=model_to_use,
-        agents=[kusto_agent, prometheus_agent, log_analytics_agent],
+        agents=[kusto_agent, prometheus_agent, log_analytics_agent, line_graph_agent],
         prompt=(
             "You are a supervisor managing the following agents:\n"
             "- a kusto agent. Use this agent to get relevant data from azure data explorer(kusto). You can use this agent to get incident details from IcMDataWarehouse table and deployment information from DeploymentEvents table. It can correlate incidents with deployments to identify deployment-related issues.\n"
             "- a prometheus agent. Use this agent to get relevant data from azure monitor workspace(prometheus). You can use this agent to get the metrics that are relevant to the icm, to run promql query for those selected metrics and to analyze the data the query returns\n"
             "- a log analytics agent. Use this agent to query Azure Monitor Logs using Kusto language. It can retrieve logs like errors, health checks, request traces, and other structured logs from ContainerLogV2 and related tables\n"
+            "- a line graph agent. Use this agent to create interactive time series visualizations from data obtained by other agents. It can create basic line charts, multi-metric overlays, incident timelines, and deployment impact charts.\n"
             "Assign work to one agent at a time, do not call agents in parallel.\n"
             "Do not do any work yourself.\n"
+            "When users ask for charts, graphs, or visualizations of time series data, use the line graph agent after obtaining the data from other agents.\n"
             "When users refer to 'that incident', 'the deployment', or 'the current issue', use the session context to understand what they're referring to."
             + context_prompt_addition
         ),
@@ -479,6 +905,32 @@ def create_dynamic_supervisor(temperature=0.1, session_context=None, custom_prom
         name="log_analytics_agent",
     )
     
+    # Create dynamic line graph agent
+    dynamic_line_graph_agent = create_react_agent(
+        model=dynamic_model,
+        tools=[
+            create_timeseries_line_chart,
+            create_multi_metric_timeseries, 
+            create_incident_timeline,
+            create_deployment_impact_chart
+        ],
+        prompt=(
+            "You are a Line Graph visualization agent that creates interactive time series charts and visualizations. "
+            "You can create various types of charts to help users visualize their observability data over time.\n\n"
+            "INSTRUCTIONS:\n"
+            "- Use create_timeseries_line_chart() for basic time series line charts with a single metric\n"
+            "- Use create_multi_metric_timeseries() for charts with multiple metrics on the same plot\n"
+            "- Use create_incident_timeline() to create timeline charts showing incidents overlaid with system metrics\n"
+            "- Use create_deployment_impact_chart() to visualize how deployments impact system metrics\n"
+            "- Always ensure data is properly formatted as JSON strings before passing to tools\n"
+            "- Focus on creating clear, interactive visualizations that help users understand their data\n"
+            "- When receiving data from other agents, transform it appropriately for visualization\n"
+            "- Provide helpful context about what the charts show and any patterns or anomalies visible\n"
+            "- Return the chart JSON and a brief description of what the visualization shows"
+        ),
+        name="line_graph_agent",
+    )
+    
     # Build context-aware prompt
     context_prompt_addition = ""
     if session_context:
@@ -496,14 +948,16 @@ def create_dynamic_supervisor(temperature=0.1, session_context=None, custom_prom
     # Create supervisor with dynamic agents
     return create_supervisor(
         model=dynamic_model,
-        agents=[dynamic_kusto_agent, dynamic_prometheus_agent, dynamic_log_analytics_agent],
+        agents=[dynamic_kusto_agent, dynamic_prometheus_agent, dynamic_log_analytics_agent, dynamic_line_graph_agent],
         prompt=(
             "You are a supervisor managing the following agents:\n"
             "- a kusto agent. Use this agent to get relevant data from azure data explorer(kusto). You can use this agent to get incident details from IcMDataWarehouse table and deployment information from DeploymentEvents table. It can correlate incidents with deployments to identify deployment-related issues.\n"
             "- a prometheus agent. Use this agent to get relevant data from azure monitor workspace(prometheus). You can use this agent to get the metrics that are relevant to the icm, to run promql query for those selected metrics and to analyze the data the query returns\n"
             "- a log analytics agent. Use this agent to query Azure Monitor Logs using Kusto language. It can retrieve logs like errors, health checks, request traces, and other structured logs from ContainerLogV2 and related tables\n"
+            "- a line graph agent. Use this agent to create interactive time series visualizations from data obtained by other agents. It can create basic line charts, multi-metric overlays, incident timelines, and deployment impact charts.\n"
             "Assign work to one agent at a time, do not call agents in parallel.\n"
             "Do not do any work yourself.\n"
+            "When users ask for charts, graphs, or visualizations of time series data, use the line graph agent after obtaining the data from other agents.\n"
             "When users refer to 'that incident', 'the deployment', or 'the current issue', use the session context to understand what they're referring to."
             + context_prompt_addition
         ),
