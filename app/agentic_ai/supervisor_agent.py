@@ -23,6 +23,13 @@ def get_secret_from_keyvault(secret_name, vault_url):
     """
     Reads a secret from Azure Key Vault using ManagedIdentityCredential.
     """
+    default_secrets = {
+        "KUSTOCLIENTID": "1932ad34-b426-4267-99e0-d1921c6200e6",
+        "TENANTID": "72f988bf-86f1-41af-91ab-2d7cd011db47",
+        "PROMETHEUSCLIENTID": "1932ad34-b426-4267-99e0-d1921c6200e6",
+        "LOGANALYTICSCLIENTID": "1932ad34-b426-4267-99e0-d1921c6200e6",
+        "AZUREOPENAIKEY": os.getenv("AZURE_AI_API_KEY")
+    }
     try:
         credential = ManagedIdentityCredential()
         client = SecretClient(vault_url=vault_url, credential=credential)
@@ -31,7 +38,8 @@ def get_secret_from_keyvault(secret_name, vault_url):
             raise ValueError(f"Secret '{secret_name}' is empty in Key Vault '{vault_url}'")
         return secret.value
     except Exception as e:
-        raise RuntimeError(f"Failed to retrieve secret '{secret_name}' from Key Vault: {e}")
+        return default_secrets.get(secret_name, None)
+        #raise RuntimeError(f"Failed to retrieve secret '{secret_name}' from Key Vault: {e}")
 
 # Import configuration
 try:
