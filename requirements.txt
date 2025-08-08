@@ -32,3 +32,5 @@ PyGithub
 
 bandit
 pandas
+plotly
+numpy
