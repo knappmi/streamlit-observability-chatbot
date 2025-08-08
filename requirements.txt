@@ -1,1 +1,34 @@
+### Streamlit Requirements
 streamlit>=1.28.0
+
+### ChatBot Requirements
+# LangChain & OpenAI
+langchain
+langchain-openai
+langgraph
+langchainhub
+langgraph-supervisor 
+langchain-community
+# Azure AI & Identity
+azure-identity
+azure-kusto-data
+azure-monitor-query
+
+# openai  # Uncomment only if explicitly needed (version managed by langchain-openai)
+# openai==0.27.8
+
+# Pydantic v1 - commented out since it conflicts with langgraph requiring pydantic v2+
+# pydantic==1.10.14
+
+# GitHub SDK
+PyGithub
+
+# HTTP Requests
+# requests  # Commented out to avoid conflicts, will be installed as dependency
+
+
+# Optional: only if using Ollama (no longer needed in your case)
+# langchain-ollama
+
+bandit
+pandas
