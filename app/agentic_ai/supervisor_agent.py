@@ -10,6 +10,8 @@ from azure.monitor.query import LogsQueryClient, LogsQueryStatus
 from datetime import timedelta
 import requests
 import os
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 
 # Import configuration
 try:
@@ -20,18 +22,34 @@ except ImportError:
     KUSTO_DATABASE = "ArgusAskJarvisDB"
     KUSTO_INCIDENT_TABLE = "IcMDataWarehouse"
     KUSTO_DEPLOYMENT_TABLE = "DeploymentEvents"
-    KUSTO_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
-    KUSTO_TENANT_ID = "72f988bf-86f1-41af-91ab-2d7cd011db47"
+    #KUSTO_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
+    #KUSTO_TENANT_ID = "72f988bf-86f1-41af-91ab-2d7cd011db47"
     PROMETHEUS_QUERY_ENDPOINT = "https://amw-argus-hack25-gqczh3d4b2d8d3en.westus.prometheus.monitor.azure.com"
-    PROMETHEUS_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
+    #PROMETHEUS_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
     LOG_ANALYTICS_WORKSPACE_ID = "f4576696-34ed-4caf-acd6-695a69f857d0"
-    LOG_ANALYTICS_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
+    #LOG_ANALYTICS_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
+    VAULT_URL = "https://argusaskagenthackathonkv.vault.azure.net/"
+    OPEN_AI_API_KEY_NAME= "AZUREOPENAIKEY"
+
+
+def get_secret_from_keyvault(secret_name, vault_url):
+    """
+    Reads a secret from Azure Key Vault using DefaultAzureCredential.
+    """
+    try:
+        credential = DefaultAzureCredential()
+        client = SecretClient(vault_url=vault_url, credential=credential)
+        secret = client.get_secret(secret_name)
+        return secret.value
+    except Exception as e:
+        print(f"Failed to retrieve secret '{secret_name}' from Key Vault: {e}")
+        return None
 
 # Initialize the model (default temperature)
 model_to_use = AzureChatOpenAI(
     azure_deployment="gpt-4.1",
     # azure_deployment="gpt-35-turbo", # swap lighter model (NOTE: THis fails since theres no model deployment)
-    api_key=os.getenv("AZURE_AI_API_KEY"),  # Use environment variable from Azure Web App
+    api_key=get_secret_from_keyvault(OPEN_AI_API_KEY_NAME, VAULT_URL),  # fecthes secret from key vault
     azure_endpoint="https://aifoundrydeployment.cognitiveservices.azure.com/",
     api_version="2024-12-01-preview",
     temperature=0.1,
@@ -41,11 +59,12 @@ def create_model_with_temperature(temperature=0.1):
     """Create an AzureChatOpenAI model with specified temperature."""
     return AzureChatOpenAI(
         azure_deployment="gpt-4.1",
-        api_key=os.getenv("AZURE_AI_API_KEY"),
+        api_key=get_secret_from_keyvault(OPEN_AI_API_KEY_NAME, VAULT_URL),
         azure_endpoint="https://aifoundrydeployment.cognitiveservices.azure.com/",
         api_version="2024-12-01-preview",
         temperature=temperature,
     )
+
 
 # === Default Configuration ===
 # Configuration is loaded from config.py
@@ -55,16 +74,16 @@ DEFAULT_CONFIG = {
         "database": KUSTO_DATABASE,
         "incident_table": KUSTO_INCIDENT_TABLE,
         "deployment_table": KUSTO_DEPLOYMENT_TABLE,
-        "client_id": KUSTO_CLIENT_ID,
-        "tenant_id": KUSTO_TENANT_ID
+        "client_id": get_secret_from_keyvault("KUSTOCLIENTID", VAULT_URL),
+        "tenant_id": get_secret_from_keyvault("TENANTID", VAULT_URL)
     },
     "prometheus": {
         "query_endpoint": PROMETHEUS_QUERY_ENDPOINT,
-        "client_id": PROMETHEUS_CLIENT_ID
+        "client_id": get_secret_from_keyvault("PROMETHEUSCLIENTID", VAULT_URL)
     },
     "log_analytics": {
         "workspace_id": LOG_ANALYTICS_WORKSPACE_ID,
-        "client_id": LOG_ANALYTICS_CLIENT_ID
+        "client_id": get_secret_from_keyvault("LOGANALYTICSCLIENTID", VAULT_URL)
     }
 }
 
