@@ -21,10 +21,10 @@ from datetime import datetime, timedelta
 
 def get_secret_from_keyvault(secret_name, vault_url):
     """
-    Reads a secret from Azure Key Vault using DefaultAzureCredential.
+    Reads a secret from Azure Key Vault using ManagedIdentityCredential.
     """
     try:
-        credential = DefaultAzureCredential()
+        credential = ManagedIdentityCredential()
         client = SecretClient(vault_url=vault_url, credential=credential)
         secret = client.get_secret(secret_name)
         if not secret.value:
@@ -56,7 +56,7 @@ except ImportError:
 model_to_use = AzureChatOpenAI(
     azure_deployment="gpt-4.1",
     # azure_deployment="gpt-35-turbo", # swap lighter model (NOTE: THis fails since theres no model deployment)
-    api_key=os.getenv("AZURE_AI_API_KEY"),  # Use environment variable from Azure Web App
+    api_key=OPEN_AI_API_KEY,  # Use value from key vault
     azure_endpoint="https://aifoundrydeployment.cognitiveservices.azure.com/",
     api_version="2024-12-01-preview",
     temperature=0.1,
@@ -66,7 +66,7 @@ def create_model_with_temperature(temperature=0.1):
     """Create an AzureChatOpenAI model with specified temperature."""
     return AzureChatOpenAI(
         azure_deployment="gpt-4.1",
-        api_key=os.getenv("AZURE_AI_API_KEY"),
+        api_key=OPEN_AI_API_KEY,
         azure_endpoint="https://aifoundrydeployment.cognitiveservices.azure.com/",
         api_version="2024-12-01-preview",
         temperature=temperature,
