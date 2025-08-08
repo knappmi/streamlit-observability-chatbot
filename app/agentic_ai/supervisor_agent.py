@@ -13,24 +13,6 @@ import os
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
-# Import configuration
-try:
-    from config import *
-except ImportError:
-    # Fallback values if config.py is not found
-    KUSTO_CLUSTER_URI = "https://argushackathoncluster.westus.kusto.windows.net"
-    KUSTO_DATABASE = "ArgusAskJarvisDB"
-    KUSTO_INCIDENT_TABLE = "IcMDataWarehouse"
-    KUSTO_DEPLOYMENT_TABLE = "DeploymentEvents"
-    #KUSTO_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
-    #KUSTO_TENANT_ID = "72f988bf-86f1-41af-91ab-2d7cd011db47"
-    PROMETHEUS_QUERY_ENDPOINT = "https://amw-argus-hack25-gqczh3d4b2d8d3en.westus.prometheus.monitor.azure.com"
-    #PROMETHEUS_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
-    LOG_ANALYTICS_WORKSPACE_ID = "f4576696-34ed-4caf-acd6-695a69f857d0"
-    #LOG_ANALYTICS_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
-    VAULT_URL = "https://argusaskagenthackathonkv.vault.azure.net/"
-    OPEN_AI_API_KEY_NAME= "AZUREOPENAIKEY"
-
 
 def get_secret_from_keyvault(secret_name, vault_url):
     """
@@ -45,11 +27,34 @@ def get_secret_from_keyvault(secret_name, vault_url):
         print(f"Failed to retrieve secret '{secret_name}' from Key Vault: {e}")
         return None
 
+# Import configuration
+try:
+    from config import *
+except ImportError:
+    # Fallback values if config.py is not found
+    VAULT_URL = "https://argusaskagenthackathonkv.vault.azure.net/"
+    KUSTO_CLUSTER_URI = "https://argushackathoncluster.westus.kusto.windows.net"
+    KUSTO_DATABASE = "ArgusAskJarvisDB"
+    KUSTO_INCIDENT_TABLE = "IcMDataWarehouse"
+    KUSTO_DEPLOYMENT_TABLE = "DeploymentEvents"
+    #KUSTO_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
+    KUSTO_CLIENT_ID = get_secret_from_keyvault("KUSTOCLIENTID", VAULT_URL)
+    KUSTO_TENANT_ID = get_secret_from_keyvault("TENANTID", VAULT_URL)
+    #KUSTO_TENANT_ID = "72f988bf-86f1-41af-91ab-2d7cd011db47"
+    PROMETHEUS_QUERY_ENDPOINT = "https://amw-argus-hack25-gqczh3d4b2d8d3en.westus.prometheus.monitor.azure.com"
+    #PROMETHEUS_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
+    PROMETHEUS_CLIENT_ID = get_secret_from_keyvault("PROMETHEUSCLIENTID", VAULT_URL)
+    LOG_ANALYTICS_WORKSPACE_ID = "f4576696-34ed-4caf-acd6-695a69f857d0"
+    #LOG_ANALYTICS_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
+    LOG_ANALYTICS_CLIENT_ID = get_secret_from_keyvault("LOGANALYTICSCLIENTID", VAULT_URL)
+    OPEN_AI_API_KEY = get_secret_from_keyvault("AZUREOPENAIKEY", VAULT_URL)
+
+
 # Initialize the model (default temperature)
 model_to_use = AzureChatOpenAI(
     azure_deployment="gpt-4.1",
     # azure_deployment="gpt-35-turbo", # swap lighter model (NOTE: THis fails since theres no model deployment)
-    api_key=get_secret_from_keyvault(OPEN_AI_API_KEY_NAME, VAULT_URL),  # fecthes secret from key vault
+    api_key=OPEN_AI_API_KEY,
     azure_endpoint="https://aifoundrydeployment.cognitiveservices.azure.com/",
     api_version="2024-12-01-preview",
     temperature=0.1,
@@ -59,7 +64,7 @@ def create_model_with_temperature(temperature=0.1):
     """Create an AzureChatOpenAI model with specified temperature."""
     return AzureChatOpenAI(
         azure_deployment="gpt-4.1",
-        api_key=get_secret_from_keyvault(OPEN_AI_API_KEY_NAME, VAULT_URL),
+        api_key=OPEN_AI_API_KEY,
         azure_endpoint="https://aifoundrydeployment.cognitiveservices.azure.com/",
         api_version="2024-12-01-preview",
         temperature=temperature,
@@ -74,16 +79,16 @@ DEFAULT_CONFIG = {
         "database": KUSTO_DATABASE,
         "incident_table": KUSTO_INCIDENT_TABLE,
         "deployment_table": KUSTO_DEPLOYMENT_TABLE,
-        "client_id": get_secret_from_keyvault("KUSTOCLIENTID", VAULT_URL),
-        "tenant_id": get_secret_from_keyvault("TENANTID", VAULT_URL)
+        "client_id": KUSTO_CLIENT_ID,
+        "tenant_id": KUSTO_TENANT_ID
     },
     "prometheus": {
         "query_endpoint": PROMETHEUS_QUERY_ENDPOINT,
-        "client_id": get_secret_from_keyvault("PROMETHEUSCLIENTID", VAULT_URL)
+        "client_id": PROMETHEUS_CLIENT_ID
     },
     "log_analytics": {
         "workspace_id": LOG_ANALYTICS_WORKSPACE_ID,
-        "client_id": get_secret_from_keyvault("LOGANALYTICSCLIENTID", VAULT_URL)
+        "client_id": LOG_ANALYTICS_CLIENT_ID
     }
 }
 
