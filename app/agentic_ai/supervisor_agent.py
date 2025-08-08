@@ -33,13 +33,11 @@ def convert_numpy_to_list(obj):
 
 def get_secret_from_keyvault(secret_name, vault_url):
     """
-    Reads a secret from Azure Key Vault using ManagedIdentityCredential.
+    Reads a secret from Azure Key Vault using DefaultAzureCredential.
+    DefaultAzureCredential will automatically try multiple authentication methods including managed identity.
     """
     try:
-        # Get client id from ENV variable
-        client_id = os.getenv("AZURE_CLIENT_ID")
-        if not client_id:
-            raise ValueError("AZURE_CLIENT_ID not set")
+        # DefaultAzureCredential will automatically try managed identity, environment variables, etc.
         credential = DefaultAzureCredential()
         client = SecretClient(vault_url=vault_url, credential=credential)
         secret = client.get_secret(secret_name)
@@ -218,7 +216,7 @@ def kusto_deployment_query_tool(
 # === Prometheus Tools ===
 def get_prometheus_metrics(query_endpoint, clientid):
     try:
-        credential = ManagedIdentityCredential(client_id=clientid)
+        credential = DefaultAzureCredential()
         token = credential.get_token("https://data.monitor.azure.com").token
         headers = {
             "Authorization": f"Bearer {token}"
@@ -242,7 +240,7 @@ def run_promql_query(query_endpoint, promql_query, clientid):
     """
     Runs a PromQL query in Azure Monitor using managed identity authentication.
     """
-    credential = ManagedIdentityCredential(client_id=clientid)
+    credential = DefaultAzureCredential()
     token = credential.get_token("https://data.monitor.azure.com").token
 
     url = f"{query_endpoint}/api/v1/query?query={promql_query}"
@@ -297,7 +295,7 @@ def query_log_analytics_tool(
     if not query:
         raise ValueError("Query is required. The agent must generate one based on user intent.")
 
-    credential = ManagedIdentityCredential(client_id=client_id)
+    credential = DefaultAzureCredential()
     client = LogsQueryClient(credential)
 
     try:

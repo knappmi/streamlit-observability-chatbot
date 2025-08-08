@@ -86,50 +86,36 @@ def extract_and_render_plotly_charts(response):
     charts_rendered = 0
     cleaned_response = response
     
-    # Look for plotly figure objects in the response
-    # Pattern to find figure data objects
-    import re
-    
-    # Look for the specific pattern our tools return
-    pattern = r'\{[^{}]*"type":\s*"plotly_figure"[^{}]*\}'
-    
-    # Find all potential chart objects
+    # Look for JSON objects containing plotly figure data
     chart_matches = []
     
-    # More comprehensive search for nested JSON structures
+    # Find all complete JSON objects in the response
     i = 0
     while i < len(response):
-        if response[i:].startswith('{"type": "plotly_figure"') or response[i:].find('"type": "plotly_figure"') != -1:
+        if response[i] == '{':
             # Find the complete JSON object
-            brace_count = 0
+            brace_count = 1
             start = i
-            j = i
-            in_json = False
+            j = i + 1
             
-            while j < len(response):
+            while j < len(response) and brace_count > 0:
                 if response[j] == '{':
-                    if not in_json:
-                        start = j
-                        in_json = True
                     brace_count += 1
                 elif response[j] == '}':
                     brace_count -= 1
-                    if brace_count == 0 and in_json:
-                        # Found complete JSON object
-                        json_str = response[start:j+1]
-                        try:
-                            parsed = json.loads(json_str)
-                            if isinstance(parsed, dict) and parsed.get('type') == 'plotly_figure':
-                                chart_matches.append((start, j+1, json_str, parsed))
-                                i = j + 1
-                                break
-                        except json.JSONDecodeError:
-                            pass
                 j += 1
-            else:
-                i += 1
-        else:
-            i += 1
+            
+            if brace_count == 0:  # Found complete JSON object
+                json_str = response[start:j]
+                try:
+                    parsed = json.loads(json_str)
+                    if isinstance(parsed, dict) and parsed.get('type') == 'plotly_figure':
+                        chart_matches.append((start, j, json_str, parsed))
+                        i = j
+                        continue
+                except json.JSONDecodeError:
+                    pass
+        i += 1
     
     # Sort matches by position (descending) to remove from end to beginning
     chart_matches.sort(key=lambda x: x[0], reverse=True)
@@ -153,6 +139,7 @@ def extract_and_render_plotly_charts(response):
             
         except Exception as e:
             st.error(f"Error rendering chart: {str(e)}")
+            st.text(f"Chart data preview: {json_str[:200]}...")  # Debug info
             # Still remove the JSON from response
             cleaned_response = cleaned_response[:start_pos] + cleaned_response[end_pos:]
     
@@ -382,6 +369,17 @@ st.markdown("""
 # Sidebar for session management
 with st.sidebar:
     st.header("💬 Chat Sessions")
+    
+    # Debug Mode Toggle
+    st.subheader("🐛 Debug Mode")
+    if 'debug_mode' not in st.session_state:
+        st.session_state.debug_mode = False
+    
+    st.session_state.debug_mode = st.toggle(
+        "Show Raw Agent Responses",
+        value=st.session_state.debug_mode,
+        help="Enable to see the raw JSON responses from agents for debugging chart issues"
+    )
     
     # Temperature Control (only show for experimental model)
     if st.session_state.selected_model_type == "dynamic":
@@ -839,6 +837,17 @@ if prompt := st.chat_input("Ask me anything about your infrastructure..."):
             
             # Update context based on response
             update_context_from_response(response, st.session_state.context)
+            
+            # Show debug info if enabled
+            if st.session_state.debug_mode:
+                with st.expander("🐛 Raw Agent Response (Debug)", expanded=False):
+                    st.code(response, language='text')
+                    
+                    # Check for chart data
+                    if '"type": "plotly_figure"' in response:
+                        st.success("✅ Chart data detected in response")
+                    else:
+                        st.warning("⚠️ No chart data found in response")
             
             # Extract and render any Plotly charts, get cleaned response
             cleaned_response = extract_and_render_plotly_charts(response)
