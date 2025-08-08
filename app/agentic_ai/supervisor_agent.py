@@ -349,7 +349,42 @@ supervisor = create_supervisor(
         "- a log analytics agent. Use this agent to query Azure Monitor Logs using Kusto language. It can retrieve logs like errors, health checks, request traces, and other structured logs from ContainerLogV2 and related tables\n"
         "Assign work to one agent at a time, do not call agents in parallel.\n"
         "Do not do any work yourself.\n"
+        "When users refer to 'that incident', 'the deployment', or 'the current issue', use any provided context to understand what they're referring to.\n"
+        "If a user asks follow-up questions without context, ask for clarification about which specific incident, deployment, or issue they mean."
     ),
     add_handoff_back_messages=True,
     output_mode="last_message",
 ).compile()
+
+def create_context_aware_supervisor(session_context=None):
+    """Create a supervisor that's aware of session context."""
+    
+    context_prompt_addition = ""
+    if session_context:
+        context_parts = []
+        if session_context.get('last_incident_id'):
+            context_parts.append(f"Current incident context: {session_context['last_incident_id']}")
+        if session_context.get('last_deployment'):
+            context_parts.append(f"Current deployment context: {session_context['last_deployment']}")
+        if session_context.get('active_investigation'):
+            context_parts.append(f"Active investigation type: {session_context['active_investigation']}")
+        
+        if context_parts:
+            context_prompt_addition = f"\n\nCURRENT SESSION CONTEXT:\n{chr(10).join(context_parts)}\nPlease consider this context when routing requests and providing responses."
+    
+    return create_supervisor(
+        model=model_to_use,
+        agents=[kusto_agent, prometheus_agent, log_analytics_agent],
+        prompt=(
+            "You are a supervisor managing the following agents:\n"
+            "- a kusto agent. Use this agent to get relevant data from azure data explorer(kusto). You can use this agent to get incident details from IcMDataWarehouse table and deployment information from DeploymentEvents table. It can correlate incidents with deployments to identify deployment-related issues.\n"
+            "- a prometheus agent. Use this agent to get relevant data from azure monitor workspace(prometheus). You can use this agent to get the metrics that are relevant to the icm, to run promql query for those selected metrics and to analyze the data the query returns\n"
+            "- a log analytics agent. Use this agent to query Azure Monitor Logs using Kusto language. It can retrieve logs like errors, health checks, request traces, and other structured logs from ContainerLogV2 and related tables\n"
+            "Assign work to one agent at a time, do not call agents in parallel.\n"
+            "Do not do any work yourself.\n"
+            "When users refer to 'that incident', 'the deployment', or 'the current issue', use the session context to understand what they're referring to."
+            + context_prompt_addition
+        ),
+        add_handoff_back_messages=True,
+        output_mode="last_message",
+    ).compile()
