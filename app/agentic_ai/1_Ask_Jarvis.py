@@ -4,6 +4,14 @@ import os
 import re
 from datetime import datetime
 
+# Configure page settings - must be first Streamlit command
+st.set_page_config(
+    page_title="Ask Jarvis",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"  # Can be "expanded", "collapsed", or "auto"
+)
+
 # Add current directory to path so we can import supervisor_agent
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
@@ -184,13 +192,42 @@ def delete_session(session_id):
 
 # Import supervisor
 try:
-    from supervisor_agent import supervisor
+    from supervisor_agent import supervisor, create_dynamic_supervisor
     supervisor_available = True
 except ImportError as e:
     supervisor_available = False
     import_error = str(e)
 
-st.title("🤖 Ask Jarvis - Your Observability Assistant")
+# Header with model selection
+col1, col2, col3 = st.columns([2.5, 1, 0.5])
+with col1:
+    st.title("👁️ Ask Jarvis - Your Observability Assistant")
+
+with col2:
+    # Model selection dropdown
+    model_options = {
+        "Standard Model": "standard",
+        "Experimental Model": "dynamic"
+    }
+    
+    # Initialize model selection in session state
+    if 'selected_model_type' not in st.session_state:
+        st.session_state.selected_model_type = "standard"
+    
+    # Model selector
+    selected_model_label = st.selectbox(
+        "🤖 Model Type",
+        options=list(model_options.keys()),
+        index=0,  # Default to Standard Model
+        help="Standard: Fixed temperature (0.1), Experimental: Adjustable via sidebar slider"
+    )
+    
+    # Update session state
+    st.session_state.selected_model_type = model_options[selected_model_label]
+
+with col3:
+    # Reserved space for future features
+    st.markdown("####")  # Add some spacing
 
 # Custom CSS for better styling
 st.markdown("""
@@ -213,12 +250,241 @@ st.markdown("""
 .stExpander > div:first-child {
     background-color: #f8f9fa;
 }
+
+/* Sidebar styling */
+.css-1d391kg {
+    position: relative;
+}
+
+/* Add hover effect for sidebar toggle */
+.css-17eq0hr {
+    transition: all 0.3s ease;
+}
+
+/* Sidebar collapse button styling */
+[data-testid="collapsedControl"] {
+    background-color: #f0f2f6;
+    border-radius: 0.5rem;
+    border: 1px solid #e0e0e0;
+    transition: all 0.2s ease;
+}
+
+[data-testid="collapsedControl"]:hover {
+    background-color: #e6e9ef;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Make the sidebar content area more defined when expanded */
+.css-1lcbmhc {
+    border-right: 2px solid #f0f2f6;
+    padding-right: 1rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
 # Sidebar for session management
 with st.sidebar:
     st.header("💬 Chat Sessions")
+    
+    # Temperature Control (only show for experimental model)
+    if st.session_state.selected_model_type == "dynamic":
+        st.subheader("🌡️ Temperature Control")
+        
+        # Initialize temperature in session state
+        if 'selected_temperature' not in st.session_state:
+            st.session_state.selected_temperature = 0.5
+        
+        # Temperature slider
+        st.session_state.selected_temperature = st.slider(
+            "Response Creativity",
+            min_value=0.0,
+            max_value=1.0,
+            value=st.session_state.selected_temperature,
+            step=0.1,
+            help="Lower = more focused and precise, Higher = more creative and diverse"
+        )
+        
+        # Temperature description
+        if st.session_state.selected_temperature <= 0.2:
+            temp_desc = "Very Conservative"
+        elif st.session_state.selected_temperature <= 0.4:
+            temp_desc = "Conservative"
+        elif st.session_state.selected_temperature <= 0.6:
+            temp_desc = "Balanced"
+        elif st.session_state.selected_temperature <= 0.8:
+            temp_desc = "Creative"
+        else:
+            temp_desc = "Very Creative"
+        
+        st.info(f"**Current Setting:** {st.session_state.selected_temperature} ({temp_desc})")
+        
+        # Prompt Customization
+        st.markdown("---")
+        st.subheader("✏️ Agent Prompts")
+        st.write("Customize the behavior of each agent by editing their prompts:")
+        
+        # Initialize custom prompts in session state with defaults
+        if 'custom_prompts' not in st.session_state:
+            st.session_state.custom_prompts = {
+                "kusto": (
+                    "You are an Azure Data Explorer (Kusto) agent who can read Azure Data Explorer tables. "
+                    "You have access to TWO tables with default configuration:\n"
+                    "1. IcMDataWarehouse - Contains incident management data\n"
+                    "2. DeploymentEvents - Contains deployment and release information\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Use kusto_incident_schema_tool() to get the schema of the incidents table\n"
+                    "- Use kusto_deployment_schema_tool() to get the schema of the deployments table\n"
+                    "- Generate Kusto queries based on user requests after getting the appropriate schema\n"
+                    "- Use kusto_incident_query_tool(query='your_query_here') for incident-related queries\n"
+                    "- Use kusto_deployment_query_tool(query='your_query_here') for deployment-related queries\n"
+                    "- You can also use the generic kusto_schema_tool(table='TableName') and kusto_query_tool(query='...', table='TableName')\n"
+                    "- You can correlate data between both tables when needed\n"
+                    "- Focus on helping users analyze incident data, deployment patterns, and their relationships\n"
+                    "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                ),
+                "prometheus": (
+                    "You are a Prometheus agent who can read Azure Monitor workspace (Prometheus environment). "
+                    "You have default configuration values pre-configured, so you can work immediately without asking for connection details.\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Use prometheus_metrics_fetch_tool() to get available metrics from the default workspace\n"
+                    "- Create PromQL queries based on user requests\n"
+                    "- Execute PromQL queries using promql_query_tool(promql_query='your_query_here')\n"
+                    "- The default endpoint and authentication are already configured\n"
+                    "- Focus on helping users analyze metrics and performance data\n"
+                    "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                ),
+                "log_analytics": (
+                    "You are a Log Analytics agent that queries Azure Monitor logs using Kusto query language. "
+                    "You have default configuration values pre-configured, so you can work immediately without asking for connection details.\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Generate valid Kusto queries based on user requests\n"
+                    "- Query logs from ContainerLogV2 and other Azure Monitor log tables\n"
+                    "- Execute queries using query_log_analytics_tool(query='your_query_here')\n"
+                    "- The default workspace ID and authentication are already configured\n"
+                    "- Focus on retrieving logs, traces, and telemetry data for troubleshooting\n"
+                    "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                )
+            }
+        
+        # Kusto Agent Prompt
+        with st.expander("🔍 Kusto Agent Prompt", expanded=False):
+            st.session_state.custom_prompts["kusto"] = st.text_area(
+                "Kusto Agent Instructions:",
+                value=st.session_state.custom_prompts["kusto"],
+                height=200,
+                help="Define how the Kusto agent should behave when analyzing incidents and deployments"
+            )
+        
+        # Prometheus Agent Prompt
+        with st.expander("📊 Prometheus Agent Prompt", expanded=False):
+            st.session_state.custom_prompts["prometheus"] = st.text_area(
+                "Prometheus Agent Instructions:",
+                value=st.session_state.custom_prompts["prometheus"],
+                height=200,
+                help="Define how the Prometheus agent should behave when analyzing metrics"
+            )
+        
+        # Log Analytics Agent Prompt
+        with st.expander("📋 Log Analytics Agent Prompt", expanded=False):
+            st.session_state.custom_prompts["log_analytics"] = st.text_area(
+                "Log Analytics Agent Instructions:",
+                value=st.session_state.custom_prompts["log_analytics"],
+                height=200,
+                help="Define how the Log Analytics agent should behave when querying logs"
+            )
+        
+        # Reset to defaults button
+        if st.button("🔄 Reset Prompts to Default", use_container_width=True):
+            st.session_state.custom_prompts = {
+                "kusto": (
+                    "You are an Azure Data Explorer (Kusto) agent who can read Azure Data Explorer tables. "
+                    "You have access to TWO tables with default configuration:\n"
+                    "1. IcMDataWarehouse - Contains incident management data\n"
+                    "2. DeploymentEvents - Contains deployment and release information\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Use kusto_incident_schema_tool() to get the schema of the incidents table\n"
+                    "- Use kusto_deployment_schema_tool() to get the schema of the deployments table\n"
+                    "- Generate Kusto queries based on user requests after getting the appropriate schema\n"
+                    "- Use kusto_incident_query_tool(query='your_query_here') for incident-related queries\n"
+                    "- Use kusto_deployment_query_tool(query='your_query_here') for deployment-related queries\n"
+                    "- You can also use the generic kusto_schema_tool(table='TableName') and kusto_query_tool(query='...', table='TableName')\n"
+                    "- You can correlate data between both tables when needed\n"
+                    "- Focus on helping users analyze incident data, deployment patterns, and their relationships\n"
+                    "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                ),
+                "prometheus": (
+                    "You are a Prometheus agent who can read Azure Monitor workspace (Prometheus environment). "
+                    "You have default configuration values pre-configured, so you can work immediately without asking for connection details.\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Use prometheus_metrics_fetch_tool() to get available metrics from the default workspace\n"
+                    "- Create PromQL queries based on user requests\n"
+                    "- Execute PromQL queries using promql_query_tool(promql_query='your_query_here')\n"
+                    "- The default endpoint and authentication are already configured\n"
+                    "- Focus on helping users analyze metrics and performance data\n"
+                    "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                ),
+                "log_analytics": (
+                    "You are a Log Analytics agent that queries Azure Monitor logs using Kusto query language. "
+                    "You have default configuration values pre-configured, so you can work immediately without asking for connection details.\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Generate valid Kusto queries based on user requests\n"
+                    "- Query logs from ContainerLogV2 and other Azure Monitor log tables\n"
+                    "- Execute queries using query_log_analytics_tool(query='your_query_here')\n"
+                    "- The default workspace ID and authentication are already configured\n"
+                    "- Focus on retrieving logs, traces, and telemetry data for troubleshooting\n"
+                    "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                )
+            }
+            st.success("✅ Prompts reset to defaults!")
+            st.rerun()
+        
+        st.markdown("---")
+    
+    else:
+        # For standard model, set fixed temperature and ensure custom_prompts exists
+        st.session_state.selected_temperature = 0.1
+        # Initialize custom prompts if not exists (for when switching between models)
+        if 'custom_prompts' not in st.session_state:
+            st.session_state.custom_prompts = {
+                "kusto": (
+                    "You are an Azure Data Explorer (Kusto) agent who can read Azure Data Explorer tables. "
+                    "You have access to TWO tables with default configuration:\n"
+                    "1. IcMDataWarehouse - Contains incident management data\n"
+                    "2. DeploymentEvents - Contains deployment and release information\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Use kusto_incident_schema_tool() to get the schema of the incidents table\n"
+                    "- Use kusto_deployment_schema_tool() to get the schema of the deployments table\n"
+                    "- Generate Kusto queries based on user requests after getting the appropriate schema\n"
+                    "- Use kusto_incident_query_tool(query='your_query_here') for incident-related queries\n"
+                    "- Use kusto_deployment_query_tool(query='your_query_here') for deployment-related queries\n"
+                    "- You can also use the generic kusto_schema_tool(table='TableName') and kusto_query_tool(query='...', table='TableName')\n"
+                    "- You can correlate data between both tables when needed\n"
+                    "- Focus on helping users analyze incident data, deployment patterns, and their relationships\n"
+                    "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                ),
+                "prometheus": (
+                    "You are a Prometheus agent who can read Azure Monitor workspace (Prometheus environment). "
+                    "You have default configuration values pre-configured, so you can work immediately without asking for connection details.\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Use prometheus_metrics_fetch_tool() to get available metrics from the default workspace\n"
+                    "- Create PromQL queries based on user requests\n"
+                    "- Execute PromQL queries using promql_query_tool(promql_query='your_query_here')\n"
+                    "- The default endpoint and authentication are already configured\n"
+                    "- Focus on helping users analyze metrics and performance data\n"
+                    "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                ),
+                "log_analytics": (
+                    "You are a Log Analytics agent that queries Azure Monitor logs using Kusto query language. "
+                    "You have default configuration values pre-configured, so you can work immediately without asking for connection details.\n\n"
+                    "INSTRUCTIONS:\n"
+                    "- Generate valid Kusto queries based on user requests\n"
+                    "- Query logs from ContainerLogV2 and other Azure Monitor log tables\n"
+                    "- Execute queries using query_log_analytics_tool(query='your_query_here')\n"
+                    "- The default workspace ID and authentication are already configured\n"
+                    "- Focus on retrieving logs, traces, and telemetry data for troubleshooting\n"
+                    "- Respond ONLY with the results of your work, do NOT include ANY other text."
+                )
+            }
     
     # New Session button
     col1, col2 = st.columns(2)
@@ -318,6 +584,18 @@ with st.sidebar:
     st.header("📊 Current Session")
     st.write(f"**ID:** `{st.session_state.session_id}`")
     st.write(f"**Messages:** {len(st.session_state.messages)}")
+    st.write(f"**Model:** {selected_model_label}")
+    
+    if st.session_state.selected_model_type == "dynamic":
+        temp_desc = "Very Conservative" if st.session_state.selected_temperature <= 0.2 else \
+                   "Conservative" if st.session_state.selected_temperature <= 0.4 else \
+                   "Balanced" if st.session_state.selected_temperature <= 0.6 else \
+                   "Creative" if st.session_state.selected_temperature <= 0.8 else "Very Creative"
+        st.write(f"**Temperature:** {st.session_state.selected_temperature} ({temp_desc})")
+        st.write(f"**Custom Prompts:** ✅ Active")
+    else:
+        st.write(f"**Temperature:** 0.1 (Fixed - Conservative)")
+        st.write(f"**Custom Prompts:** ❌ Default")
     
     # Display current context
     st.subheader("🎯 Active Context")
@@ -351,7 +629,12 @@ for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if message["role"] == "assistant" and "timestamp" in message:
-            st.caption(f"⏱️ {message['timestamp']}")
+            caption_parts = [f"⏱️ {message['timestamp']}"]
+            if "response_time" in message:
+                caption_parts.append(message['response_time'])
+            if "temperature_label" in message:
+                caption_parts.append(f"🌡️ {message['temperature_label']}")
+            st.caption(" | ".join(caption_parts))
 
 # Input for new message
 if prompt := st.chat_input("Ask me anything about your infrastructure..."):
@@ -383,10 +666,22 @@ if prompt := st.chat_input("Ask me anything about your infrastructure..."):
             with st.spinner("🤔 Jarvis is thinking..."):
                 start_time = datetime.now()
                 
-                # Get response from supervisor
-                result = supervisor.invoke({
-                    "messages": [("user", context_prompt)]
-                })
+                # Choose supervisor based on model type
+                if st.session_state.selected_model_type == "standard":
+                    # Use original supervisor with fixed temperature (0.1)
+                    result = supervisor.invoke({
+                        "messages": [("user", context_prompt)]
+                    })
+                else:
+                    # Use dynamic supervisor with selected temperature and custom prompts
+                    dynamic_supervisor = create_dynamic_supervisor(
+                        temperature=st.session_state.selected_temperature,
+                        session_context=st.session_state.context,
+                        custom_prompts=st.session_state.custom_prompts
+                    )
+                    result = dynamic_supervisor.invoke({
+                        "messages": [("user", context_prompt)]
+                    })
                 
                 end_time = datetime.now()
                 response_time = (end_time - start_time).total_seconds()
@@ -400,14 +695,30 @@ if prompt := st.chat_input("Ask me anything about your infrastructure..."):
             # Display the response
             message_placeholder.markdown(response)
             
+            # Generate temperature label
+            if st.session_state.selected_model_type == "standard":
+                temp_label = "Standard Model (0.1)"
+            else:
+                temp_desc = "Very Conservative" if st.session_state.selected_temperature <= 0.2 else \
+                           "Conservative" if st.session_state.selected_temperature <= 0.4 else \
+                           "Balanced" if st.session_state.selected_temperature <= 0.6 else \
+                           "Creative" if st.session_state.selected_temperature <= 0.8 else "Very Creative"
+                temp_label = f"Experimental ({st.session_state.selected_temperature}) - {temp_desc}"
+            
             # Add assistant response to conversation history
             assistant_message = {
                 "role": "assistant", 
                 "content": response,
                 "timestamp": datetime.now().strftime("%H:%M:%S"),
-                "response_time": f"{response_time:.2f}s"
+                "response_time": f"{response_time:.2f}s",
+                "temperature": st.session_state.selected_temperature,
+                "temperature_label": temp_label,
+                "model_type": st.session_state.selected_model_type
             }
             st.session_state.messages.append(assistant_message)
+            
+            # Add temperature info to response display
+            st.caption(f"⏱️ {response_time:.2f}s | 🌡️ {temp_label}")
             
             # Auto-save session after each response
             save_current_session()
@@ -453,6 +764,19 @@ if len(st.session_state.messages) == 0:
     - "Tell me more about that incident"
     - "What were the metrics during that deployment?"
     - "Show me logs from the same timeframe"
+    
+    ---
+    
+    ### 🎛️ Interface Tips:
+    
+    **Sidebar Controls:**
+    - **Collapse Sidebar**: Use the native collapse button to hide/show the sidebar
+    - 🔄 **Session Management**: Save, load, and manage conversation history
+    - 🌡️ **Experimental Mode**: Access temperature control and custom prompts
+    
+    **Model Selection:**
+    - 🤖 **Standard Model**: Consistent, reliable responses (temp: 0.1)
+    - 🧪 **Experimental Model**: Customizable creativity and agent prompts
     """)
 
 # Footer with session info

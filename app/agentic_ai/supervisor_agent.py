@@ -27,7 +27,7 @@ except ImportError:
     LOG_ANALYTICS_WORKSPACE_ID = "f4576696-34ed-4caf-acd6-695a69f857d0"
     LOG_ANALYTICS_CLIENT_ID = "1932ad34-b426-4267-99e0-d1921c6200e6"
 
-# Initialize the model
+# Initialize the model (default temperature)
 model_to_use = AzureChatOpenAI(
     azure_deployment="gpt-4.1",
     # azure_deployment="gpt-35-turbo", # swap lighter model (NOTE: THis fails since theres no model deployment)
@@ -36,6 +36,16 @@ model_to_use = AzureChatOpenAI(
     api_version="2024-12-01-preview",
     temperature=0.1,
 )
+
+def create_model_with_temperature(temperature=0.1):
+    """Create an AzureChatOpenAI model with specified temperature."""
+    return AzureChatOpenAI(
+        azure_deployment="gpt-4.1",
+        api_key=os.getenv("AZURE_AI_API_KEY"),
+        azure_endpoint="https://aifoundrydeployment.cognitiveservices.azure.com/",
+        api_version="2024-12-01-preview",
+        temperature=temperature,
+    )
 
 # === Default Configuration ===
 # Configuration is loaded from config.py
@@ -375,6 +385,118 @@ def create_context_aware_supervisor(session_context=None):
     return create_supervisor(
         model=model_to_use,
         agents=[kusto_agent, prometheus_agent, log_analytics_agent],
+        prompt=(
+            "You are a supervisor managing the following agents:\n"
+            "- a kusto agent. Use this agent to get relevant data from azure data explorer(kusto). You can use this agent to get incident details from IcMDataWarehouse table and deployment information from DeploymentEvents table. It can correlate incidents with deployments to identify deployment-related issues.\n"
+            "- a prometheus agent. Use this agent to get relevant data from azure monitor workspace(prometheus). You can use this agent to get the metrics that are relevant to the icm, to run promql query for those selected metrics and to analyze the data the query returns\n"
+            "- a log analytics agent. Use this agent to query Azure Monitor Logs using Kusto language. It can retrieve logs like errors, health checks, request traces, and other structured logs from ContainerLogV2 and related tables\n"
+            "Assign work to one agent at a time, do not call agents in parallel.\n"
+            "Do not do any work yourself.\n"
+            "When users refer to 'that incident', 'the deployment', or 'the current issue', use the session context to understand what they're referring to."
+            + context_prompt_addition
+        ),
+        add_handoff_back_messages=True,
+        output_mode="last_message",
+    ).compile()
+
+def create_dynamic_supervisor(temperature=0.1, session_context=None, custom_prompts=None):
+    """Create a supervisor with dynamic temperature, optional session context, and custom prompts."""
+    
+    # Create model with specified temperature
+    dynamic_model = create_model_with_temperature(temperature)
+    
+    # Default prompts
+    default_prompts = {
+        "kusto": (
+            "You are an Azure Data Explorer (Kusto) agent who can read Azure Data Explorer tables. "
+            "You have access to TWO tables with default configuration:\n"
+            "1. IcMDataWarehouse - Contains incident management data\n"
+            "2. DeploymentEvents - Contains deployment and release information\n\n"
+            "INSTRUCTIONS:\n"
+            "- Use kusto_incident_schema_tool() to get the schema of the incidents table\n"
+            "- Use kusto_deployment_schema_tool() to get the schema of the deployments table\n"
+            "- Generate Kusto queries based on user requests after getting the appropriate schema\n"
+            "- Use kusto_incident_query_tool(query='your_query_here') for incident-related queries\n"
+            "- Use kusto_deployment_query_tool(query='your_query_here') for deployment-related queries\n"
+            "- You can also use the generic kusto_schema_tool(table='TableName') and kusto_query_tool(query='...', table='TableName')\n"
+            "- You can correlate data between both tables when needed\n"
+            "- Focus on helping users analyze incident data, deployment patterns, and their relationships\n"
+            "- Respond ONLY with the results of your work, do NOT include ANY other text."
+        ),
+        "prometheus": (
+            "You are a Prometheus agent who can read Azure Monitor workspace (Prometheus environment). "
+            "You have default configuration values pre-configured, so you can work immediately without asking for connection details.\n\n"
+            "INSTRUCTIONS:\n"
+            "- Use prometheus_metrics_fetch_tool() to get available metrics from the default workspace\n"
+            "- Create PromQL queries based on user requests\n"
+            "- Execute PromQL queries using promql_query_tool(promql_query='your_query_here')\n"
+            "- The default endpoint and authentication are already configured\n"
+            "- Focus on helping users analyze metrics and performance data\n"
+            "- Respond ONLY with the results of your work, do NOT include ANY other text."
+        ),
+        "log_analytics": (
+            "You are a Log Analytics agent that queries Azure Monitor logs using Kusto query language. "
+            "You have default configuration values pre-configured, so you can work immediately without asking for connection details.\n\n"
+            "INSTRUCTIONS:\n"
+            "- Generate valid Kusto queries based on user requests\n"
+            "- Query logs from ContainerLogV2 and other Azure Monitor log tables\n"
+            "- Execute queries using query_log_analytics_tool(query='your_query_here')\n"
+            "- The default workspace ID and authentication are already configured\n"
+            "- Focus on retrieving logs, traces, and telemetry data for troubleshooting\n"
+            "- Respond ONLY with the results of your work, do NOT include ANY other text."
+        )
+    }
+    
+    # Use custom prompts if provided, otherwise use defaults
+    prompts = custom_prompts if custom_prompts else default_prompts
+    
+    # Create agents with the dynamic model and custom prompts
+    dynamic_kusto_agent = create_react_agent(
+        model=dynamic_model,
+        tools=[
+            kusto_schema_tool, 
+            kusto_query_tool,
+            kusto_incident_schema_tool, 
+            kusto_incident_query_tool,
+            kusto_deployment_schema_tool,
+            kusto_deployment_query_tool
+        ],
+        prompt=prompts["kusto"],
+        name="kusto_agent",
+    )
+    
+    dynamic_prometheus_agent = create_react_agent(
+        model=dynamic_model,
+        tools=[prometheus_metrics_fetch_tool, promql_query_tool],
+        prompt=prompts["prometheus"],
+        name="prometheus_agent",
+    )
+    
+    dynamic_log_analytics_agent = create_react_agent(
+        model=dynamic_model,
+        tools=[query_log_analytics_tool],
+        prompt=prompts["log_analytics"],
+        name="log_analytics_agent",
+    )
+    
+    # Build context-aware prompt
+    context_prompt_addition = ""
+    if session_context:
+        context_parts = []
+        if session_context.get('last_incident_id'):
+            context_parts.append(f"Current incident context: {session_context['last_incident_id']}")
+        if session_context.get('last_deployment'):
+            context_parts.append(f"Current deployment context: {session_context['last_deployment']}")
+        if session_context.get('active_investigation'):
+            context_parts.append(f"Active investigation type: {session_context['active_investigation']}")
+        
+        if context_parts:
+            context_prompt_addition = f"\n\nCURRENT SESSION CONTEXT:\n{chr(10).join(context_parts)}\nPlease consider this context when routing requests and providing responses."
+    
+    # Create supervisor with dynamic agents
+    return create_supervisor(
+        model=dynamic_model,
+        agents=[dynamic_kusto_agent, dynamic_prometheus_agent, dynamic_log_analytics_agent],
         prompt=(
             "You are a supervisor managing the following agents:\n"
             "- a kusto agent. Use this agent to get relevant data from azure data explorer(kusto). You can use this agent to get incident details from IcMDataWarehouse table and deployment information from DeploymentEvents table. It can correlate incidents with deployments to identify deployment-related issues.\n"
