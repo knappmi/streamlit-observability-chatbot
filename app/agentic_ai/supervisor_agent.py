@@ -29,8 +29,8 @@ except ImportError:
 
 # Initialize the model
 model_to_use = AzureChatOpenAI(
-    # azure_deployment="gpt-4.1",
-    azure_deployment="gpt-35-turbo", # swap lighter model
+    azure_deployment="gpt-4.1",
+    # azure_deployment="gpt-35-turbo", # swap lighter model (NOTE: THis fails since theres no model deployment)
     api_key=os.getenv("AZURE_AI_API_KEY"),  # Use environment variable from Azure Web App
     azure_endpoint="https://aifoundrydeployment.cognitiveservices.azure.com/",
     api_version="2024-12-01-preview",
