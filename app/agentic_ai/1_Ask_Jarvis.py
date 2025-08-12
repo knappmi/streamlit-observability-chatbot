@@ -7,6 +7,14 @@ from datetime import datetime
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+
+def is_kusto_question(prompt: str) -> bool:
+    kusto_keywords = [
+        "kusto", "adx", "data explorer", "incident", "deployment",
+        "IcMDataWarehouse", "DeploymentEvents", "table", "query"
+    ]
+    return any(word.lower() in prompt.lower() for word in kusto_keywords)
+
 # Configure page settings - must be first Streamlit command
 st.set_page_config(
     page_title="Ask Jarvis",
@@ -783,7 +791,31 @@ for i, message in enumerate(st.session_state.messages):
             st.caption(" | ".join(caption_parts))
 
 # Input for new message
-if prompt := st.chat_input("Ask me anything about your infrastructure..."):
+# if prompt := st.chat_input("Ask me anything about your infrastructure..."):
+#     if not supervisor_available:
+#         st.error(f"❌ Supervisor agent not available: {import_error}")
+#         st.stop()rjoshi
+prompt = st.chat_input("Ask me anything about your infrastructure...")
+
+selected_table = None
+show_table_selector = False
+
+# if prompt and is_kusto_question(prompt):
+#     show_table_selector = True
+#     try:
+#         from supervisor_agent import kusto_list_tables_tool
+#         # Use your default cluster/database or let user pick
+#         cluster_uri = "https://argushackathoncluster.westus.kusto.windows.net/"
+#         database = "ArgusAskJarvisDB"
+#         tables = kusto_list_tables_tool(cluster_uri=cluster_uri, database=database)
+#         if tables:
+#             selected_table = st.selectbox("Select a Kusto table to use:", tables)
+#         else:
+#             st.warning("No tables found in the default Kusto database.")
+#     except Exception as e:
+#         st.warning(f"Could not fetch Kusto tables: {e}")
+
+if prompt:
     if not supervisor_available:
         st.error(f"❌ Supervisor agent not available: {import_error}")
         st.stop()
@@ -799,6 +831,8 @@ if prompt := st.chat_input("Ask me anything about your infrastructure..."):
     # Display user message
     with st.chat_message("user"):
         st.markdown(prompt)
+        #if show_table_selector and selected_table:
+        #    st.info(f"Selected Kusto Table: **{selected_table}**")
     
     # Generate assistant response
     with st.chat_message("assistant"):
@@ -807,7 +841,10 @@ if prompt := st.chat_input("Ask me anything about your infrastructure..."):
         try:
             # Build context-aware prompt
             context_prompt = build_context_aware_prompt(prompt, st.session_state.messages, st.session_state.context)
-            
+            #append selected table info if applicable
+            #if show_table_selector and selected_table:
+            #    context_prompt += f"\n\n[User selected Kusto table: {selected_table}]"
+           
             # Show thinking indicator
             with st.spinner("🤔 Jarvis is thinking..."):
                 start_time = datetime.now()

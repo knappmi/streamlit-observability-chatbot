@@ -18,6 +18,8 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import json
 from datetime import datetime, timedelta
+from kusto_tool import kusto_list_tables_tool
+
 
 # Utility function for JSON serialization
 def convert_numpy_to_list(obj):
@@ -167,17 +169,21 @@ DEFAULT_CONFIG = {
 }
 
 # === Kusto Tools ===
-def kusto_schema_fetcher(cluster_uri, database, table, client_id, Tenantid):
-    kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(cluster_uri, client_id)
-    kcsb.authority_id = Tenantid
+def kusto_schema_fetcher(cluster_uri, database, table, client_id=None, Tenantid=None):
+    #kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(cluster_uri, client_id)
+    #kcsb.authority_id = Tenantid
+    token_credential = DefaultAzureCredential()
+    kcsb = KustoConnectionStringBuilder.with_azure_token_credential(cluster_uri, token_credential)   
     client = KustoClient(kcsb)
     query = f"{table}|getschema"
     response = client.execute(database, query)
     return [row.to_dict() for row in response.primary_results[0]]
 
 def query_kusto_table(cluster_uri, database, table, client_id, Tenantid, query):
-    kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(cluster_uri, client_id)
-    kcsb.authority_id = Tenantid
+    # kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(cluster_uri, client_id)
+    # kcsb.authority_id = Tenantid
+    token_credential = DefaultAzureCredential()
+    kcsb = KustoConnectionStringBuilder.with_azure_token_credential(cluster_uri, token_credential)    
     client = KustoClient(kcsb)
     response = client.execute(database, query)
     return [row.to_dict() for row in response.primary_results[0]]
@@ -939,29 +945,48 @@ def create_deployment_impact_chart(
 kusto_agent = create_react_agent(
     model=model_to_use,
     tools=[
+        kusto_list_tables_tool,
         kusto_schema_tool, 
         kusto_query_tool,
-        kusto_incident_schema_tool, 
-        kusto_incident_query_tool,
-        kusto_deployment_schema_tool,
-        kusto_deployment_query_tool
+        #kusto_incident_schema_tool, 
+        #kusto_incident_query_tool,
+        #kusto_deployment_schema_tool,
+        #kusto_deployment_query_tool
     ],
     prompt=(
-        "You are an Azure Data Explorer (Kusto) agent who can read Azure Data Explorer tables. "
-        "You have access to TWO tables with default configuration:\n"
-        "1. IcMDataWarehouse - Contains incident management data\n"
-        "2. DeploymentEvents - Contains deployment and release information\n\n"
-        "INSTRUCTIONS:\n"
-        "- Use kusto_incident_schema_tool() to get the schema of the incidents table\n"
-        "- Use kusto_deployment_schema_tool() to get the schema of the deployments table\n"
-        "- Generate Kusto queries based on user requests after getting the appropriate schema\n"
-        "- Use kusto_incident_query_tool(query='your_query_here') for incident-related queries\n"
-        "- Use kusto_deployment_query_tool(query='your_query_here') for deployment-related queries\n"
-        "- You can also use the generic kusto_schema_tool(table='TableName') and kusto_query_tool(query='...', table='TableName')\n"
-        "- You can correlate data between both tables when needed\n"
-        "- Focus on helping users analyze incident data, deployment patterns, and their relationships\n"
-        "- Respond ONLY with the results of your work, do NOT include ANY other text."
+    "You are an Azure Data Explorer (Kusto) agent. "
+    # "Provide a brief overview of relevant tables and their relationships using the kusto_list_tables_tool(). Example: \"The database contains tables: `Products`, `Sales`, and `Categories`. The `Sales` table references `Products`, which in turn references `Categories`."
+    # "List the tables that are most pertinent to answering the user query and why. Example: \"For the sales query, relevant tables are `Sales` and `Categories`."
+    # "Draft a kusto query or pseudocode that can be used to extract the desired information based on the user’s query and table relationships."
+    # "Check the schema of the selected table using kusto_schema_tool() to understand its structure and available fields."
+    # "Use kusto_query_tool() to run the query on the selected table."
+    "When a user wants to query or view schema, first call kusto_list_tables_tool() to get the list of tables. "
+    "List the tables that are most pertinent to answering the user query and why."
+    "If the user has not specified a table, ask them to select one from the list of available tables."
+    "Do not assume a table name unless the user has selected or provided it explicitly."
+    "Draft a kusto query or pseudocode that can be used to extract the desired information based on the user’s query and table relationships."
+    "Check the schema of the selected table using kusto_schema_tool() to understand its structure and available fields."
+    "Use kusto_query_tool() to run the query on the selected table."
+    "Focus on helping users analyze incident data, deployment patterns, and their relationships."
+    "Respond ONLY with the results of your work, do NOT include ANY other text"
     ),
+    #"Do not assume a table name unless the user has selected it."
+    # prompt=(
+    #     "You are an Azure Data Explorer (Kusto) agent who can read Azure Data Explorer tables. "
+    #     "You have access to TWO tables with default configuration:\n"
+    #     "1. IcMDataWarehouse - Contains incident management data\n"
+    #     "2. DeploymentEvents - Contains deployment and release information\n\n"
+    #     "INSTRUCTIONS:\n"
+    #     "- Use kusto_incident_schema_tool() to get the schema of the incidents table\n"
+    #     "- Use kusto_deployment_schema_tool() to get the schema of the deployments table\n"
+    #     "- Generate Kusto queries based on user requests after getting the appropriate schema\n"
+    #     "- Use kusto_incident_query_tool(query='your_query_here') for incident-related queries\n"
+    #     "- Use kusto_deployment_query_tool(query='your_query_here') for deployment-related queries\n"
+    #     "- You can also use the generic kusto_schema_tool(table='TableName') and kusto_query_tool(query='...', table='TableName')\n"
+    #     "- You can correlate data between both tables when needed\n"
+    #     "- Focus on helping users analyze incident data, deployment patterns, and their relationships\n"
+    #     "- Respond ONLY with the results of your work, do NOT include ANY other text."
+    # ),
     name="kusto_agent",
 )
 
